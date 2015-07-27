@@ -1,3 +1,5 @@
+// For documentation look at the corresponding C header file hidapi.h
+
 use libc::{c_void, c_char, c_ushort, wchar_t, c_int, c_uchar, size_t};
 
 pub type HidDevice = c_void;
