@@ -22,6 +22,9 @@ extern crate libc;
 mod ffi;
 
 use std::sync::{ONCE_INIT, Once};
+use std::ffi::{CStr, CString};
+pub use libc::{c_ushort, c_int, wchar_t, size_t};
+use ffi::c_char;
 
 static mut INIT: Once = ONCE_INIT;
 
@@ -30,6 +33,32 @@ unsafe fn init() {
     INIT.call_once(||{
         ffi::hid_init();
     });
+}
+
+unsafe fn wcs_to_cstring(src: *const wchar_t) -> CString {
+    let length = ffi::wcstombs(std::ptr::null_mut(), src, 0);
+    let mut chars = Vec::<c_char>::with_capacity(length as usize + 1);
+    let ptr = chars.as_mut_ptr();
+    ffi::wcstombs(ptr, src, length);
+    chars[length as usize] = 0;
+    CString::new(chars).unwrap()
+}
+
+pub struct HidDeviceInfo<'a> {
+    path: &'a CStr,
+    vendor_id: c_ushort,
+    product_id: c_ushort,
+    serial_number: CString,
+    release_number: c_ushort,
+    manufactor_string: CString,
+    product_string: CString,
+    usage_page: c_ushort,
+    usage: c_ushort,
+    interface_number: c_int,
+}
+
+pub fn enumerate_hid_devices() {
+
 }
 
 pub struct HidDevice {
