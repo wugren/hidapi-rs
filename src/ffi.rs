@@ -19,23 +19,22 @@
 
 // For documentation look at the corresponding C header file hidapi.h
 
-use libc::{c_void, c_ushort, wchar_t, c_int, c_uchar, size_t};
+use libc::{c_void, c_ushort, wchar_t, c_int, c_uchar, size_t, c_char};
 
 pub type HidDevice = c_void;
-pub type c_char = u8;
 
 pub struct HidDeviceInfo {
-    path: *const c_char,
-    vendor_id: c_ushort,
-    product_id: c_ushort,
-    serial_number: *const wchar_t,
-    release_number: c_ushort,
-    manufactor_string: *const wchar_t,
-    product_string: *const wchar_t,
-    usage_page: c_ushort,
-    usage: c_ushort,
-    interface_number: c_int,
-    next: *mut HidDeviceInfo,
+    pub path: *const c_char,
+    pub vendor_id: c_ushort,
+    pub product_id: c_ushort,
+    pub serial_number: *const wchar_t,
+    pub release_number: c_ushort,
+    pub manufactor_string: *const wchar_t,
+    pub product_string: *const wchar_t,
+    pub usage_page: c_ushort,
+    pub usage: c_ushort,
+    pub interface_number: c_int,
+    pub next: *mut HidDeviceInfo,
 }
 
 extern "C" {
