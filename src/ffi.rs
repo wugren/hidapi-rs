@@ -24,13 +24,13 @@ use libc::{c_void, c_ushort, wchar_t, c_int, c_uchar, size_t, c_char};
 pub type HidDevice = c_void;
 
 pub struct HidDeviceInfo {
-    pub path: *const c_char,
+    pub path: *mut c_char,
     pub vendor_id: c_ushort,
     pub product_id: c_ushort,
-    pub serial_number: *const wchar_t,
+    pub serial_number: *mut wchar_t,
     pub release_number: c_ushort,
-    pub manufactor_string: *const wchar_t,
-    pub product_string: *const wchar_t,
+    pub manufactor_string: *mut wchar_t,
+    pub product_string: *mut wchar_t,
     pub usage_page: c_ushort,
     pub usage: c_ushort,
     pub interface_number: c_int,
