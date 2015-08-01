@@ -21,19 +21,43 @@ extern crate libc;
 
 mod ffi;
 
-use std::sync::{ONCE_INIT, Once};
 use std::ffi::{CStr};
-use libc::{wchar_t, size_t, c_char};
+use libc::{wchar_t, c_char};
 pub use libc::{c_ushort, c_int};
-use std::marker::PhantomData;
 
-static mut INIT: Once = ONCE_INIT;
+pub struct HidApi;
 
-#[inline(always)]
-unsafe fn init() {
-    INIT.call_once(||{
-        ffi::hid_init();
-    });
+static mut hid_api_lock: bool = false;
+
+impl HidApi {
+    pub fn new() -> Result<Self, &'static str> {
+        if unsafe {!hid_api_lock} {
+            unsafe {
+                ffi::hid_init();
+                hid_api_lock = true;
+            }
+            Ok(HidApi)
+        }else {
+            Err("Error already one HidApi in use.")
+        }
+    }
+
+    pub fn enumerate_info(&self) -> HidDeviceInfoEnumeration {
+        let list = unsafe {ffi::hid_enumerate(0, 0)};
+        HidDeviceInfoEnumeration {
+            _hid_device_info: list,
+            _next: list,
+        }
+    }
+}
+
+impl Drop for HidApi {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::hid_exit();
+            hid_api_lock = false;
+        }
+    }
 }
 
 unsafe fn wcs_to_string<'a>(src: *const wchar_t) -> String {
@@ -62,16 +86,6 @@ unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
 pub struct HidDeviceInfoEnumeration {
     _hid_device_info: *mut ffi::HidDeviceInfo,
     _next: *mut ffi::HidDeviceInfo,
-}
-
-impl HidDeviceInfoEnumeration {
-    pub fn new() -> Self {
-        let list = unsafe {ffi::hid_enumerate(0, 0)};
-        HidDeviceInfoEnumeration {
-            _hid_device_info: list,
-            _next: list,
-        }
-    }
 }
 
 impl Drop for HidDeviceInfoEnumeration {
