@@ -22,7 +22,7 @@ extern crate libc;
 mod ffi;
 
 use std::sync::{ONCE_INIT, Once};
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr};
 use libc::{wchar_t, size_t, c_char};
 pub use libc::{c_ushort, c_int};
 use std::marker::PhantomData;
@@ -36,33 +36,42 @@ unsafe fn init() {
     });
 }
 
-unsafe fn wcs_to_cstring<'a>(src: *const wchar_t) -> CString {
+unsafe fn wcs_to_string<'a>(src: *const wchar_t) -> String {
     let length = ffi::wcstombs(std::ptr::null_mut(), src, 0);
-    let mut chars = Vec::<c_char>::with_capacity(length as usize + 1);
+    let mut chars = Vec::<c_char>::with_capacity(length as usize);
     let ptr = chars.as_mut_ptr();
     ffi::wcstombs(ptr, src, length);
-    chars[length as usize] = 0;
-    CString::new(CStr::from_ptr(ptr).to_bytes_with_nul()).unwrap()
+    std::str::from_utf8(CStr::from_ptr(ptr).to_bytes()).unwrap().to_owned()
 }
 
-unsafe fn conv_hid_device_info(src_enum: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
+unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
     HidDeviceInfo {
-        path: CString::new(CStr::from_ptr((*src_enum).path).to_bytes_with_nul()).unwrap(),
-        vendor_id: (*src_enum).vendor_id,
-        product_id: (*src_enum).product_id,
-        serial_number: wcs_to_cstring((*src_enum).serial_number),
-        release_number: (*src_enum).release_number,
-        manufactor_string: wcs_to_cstring((*src_enum).manufactor_string),
-        product_string: wcs_to_cstring((*src_enum).product_string),
-        usage_page: (*src_enum).usage_page,
-        usage: (*src_enum).usage,
-        interface_number: (*src_enum).interface_number,
+        //path: std::str::from_utf8(CStr::from_ptr((*src).path).to_bytes()).unwrap().to_owned(),
+        vendor_id: (*src).vendor_id,
+        product_id: (*src).product_id,
+        //serial_number: wcs_to_string((*src).serial_number),
+        release_number: (*src).release_number,
+        //manufactor_string: wcs_to_string((*src).manufactor_string),
+        //product_string: wcs_to_string((*src).product_string),
+        usage_page: (*src).usage_page,
+        usage: (*src).usage,
+        interface_number: (*src).interface_number,
     }
 }
 
 pub struct HidDeviceInfoEnumeration {
     _hid_device_info: *mut ffi::HidDeviceInfo,
     _next: *mut ffi::HidDeviceInfo,
+}
+
+impl HidDeviceInfoEnumeration {
+    pub fn new() -> Self {
+        let list = unsafe {ffi::hid_enumerate(0, 0)};
+        HidDeviceInfoEnumeration {
+            _hid_device_info: list,
+            _next: list,
+        }
+    }
 }
 
 impl Drop for HidDeviceInfoEnumeration {
@@ -87,14 +96,15 @@ impl Iterator for HidDeviceInfoEnumeration {
     }
 }
 
+#[derive(Debug)]
 pub struct HidDeviceInfo {
-    path: CString,
+    //path: String,
     vendor_id: c_ushort,
     product_id: c_ushort,
-    serial_number: CString,
+    //serial_number: String,
     release_number: c_ushort,
-    manufactor_string: CString,
-    product_string: CString,
+    //manufactor_string: String,
+    //product_string: String,
     usage_page: c_ushort,
     usage: c_ushort,
     interface_number: c_int,
