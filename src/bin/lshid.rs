@@ -6,6 +6,6 @@ fn main() {
     println!("Hello, world!");
     let devices = HidDeviceInfoEnumeration::new();
     for dev in devices {
-        println!("{:?}\n", dev);
+        println!("{:#?}\n", dev);
     }
 }

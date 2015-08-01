@@ -46,13 +46,13 @@ unsafe fn wcs_to_string<'a>(src: *const wchar_t) -> String {
 
 unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
     HidDeviceInfo {
-        //path: std::str::from_utf8(CStr::from_ptr((*src).path).to_bytes()).unwrap().to_owned(),
+        path: std::str::from_utf8(CStr::from_ptr((*src).path).to_bytes()).unwrap().to_owned(),
         vendor_id: (*src).vendor_id,
         product_id: (*src).product_id,
         //serial_number: wcs_to_string((*src).serial_number),
         release_number: (*src).release_number,
-        //manufactor_string: wcs_to_string((*src).manufactor_string),
-        //product_string: wcs_to_string((*src).product_string),
+        manufactor_string: wcs_to_string((*src).manufactor_string),
+        product_string: wcs_to_string((*src).product_string),
         usage_page: (*src).usage_page,
         usage: (*src).usage,
         interface_number: (*src).interface_number,
@@ -98,13 +98,13 @@ impl Iterator for HidDeviceInfoEnumeration {
 
 #[derive(Debug)]
 pub struct HidDeviceInfo {
-    //path: String,
+    path: String,
     vendor_id: c_ushort,
     product_id: c_ushort,
     //serial_number: String,
     release_number: c_ushort,
-    //manufactor_string: String,
-    //product_string: String,
+    manufactor_string: String,
+    product_string: String,
     usage_page: c_ushort,
     usage: c_ushort,
     interface_number: c_int,
