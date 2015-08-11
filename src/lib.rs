@@ -62,9 +62,11 @@ impl Drop for HidApi {
 
 unsafe fn wcs_to_string<'a>(src: *const wchar_t) -> String {
     let length = ffi::wcstombs(std::ptr::null_mut(), src, 0);
-    let mut chars = Vec::<c_char>::with_capacity(length as usize);
+    let mut chars = Vec::<c_char>::with_capacity(length as usize + 1);
+    chars.set_len(length as usize + 1);
     let ptr = chars.as_mut_ptr();
     ffi::wcstombs(ptr, src, length);
+    chars[length as usize] = 0;
     std::str::from_utf8(CStr::from_ptr(ptr).to_bytes()).unwrap().to_owned()
 }
 

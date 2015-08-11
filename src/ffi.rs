@@ -73,7 +73,7 @@ extern "C" {
 }
 
 #[cfg(target_os = "linux")]
-#[link(name = "hidapi-hidraw")]
+#[link(name = "hidapi-libusb")]
 extern "C" {
     pub fn hid_init() -> c_int;
     pub fn hid_exit() -> c_int;
