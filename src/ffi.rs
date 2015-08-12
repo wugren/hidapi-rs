@@ -23,6 +23,7 @@ use libc::{c_void, c_ushort, wchar_t, c_int, c_uchar, size_t, c_char};
 
 pub type HidDevice = c_void;
 
+#[repr(C)]
 pub struct HidDeviceInfo {
     pub path: *mut c_char,
     pub vendor_id: c_ushort,
@@ -41,39 +42,6 @@ extern "C" {
     pub fn wcstombs(dest: *mut c_char, src: *const wchar_t, max: size_t) -> size_t;
 }
 
-#[cfg(target_os = "windows")]
-#[link(name = "hidapi")]
-extern "C" {
-    pub fn hid_init() -> c_int;
-    pub fn hid_exit() -> c_int;
-    pub fn hid_enumerate(vendor_id: c_ushort, product_id: c_ushort) -> *mut HidDeviceInfo;
-    pub fn hid_free_enumeration(hid_device_info: *mut HidDeviceInfo);
-    pub fn hid_open(vendor_id: c_ushort, product_id: c_ushort, serial_number: *const wchar_t)
-            -> *const HidDevice;
-    pub fn hid_open_path(path: *const c_char) -> *mut HidDevice;
-    pub fn hid_write(device: *mut HidDevice, data: *const c_uchar, length: size_t) -> c_int;
-    pub fn hid_read_timeout(device: *mut HidDevice, data: *mut c_uchar, length: size_t,
-            milleseconds: c_int) -> c_int;
-    pub fn hid_read(device: *mut HidDevice, data: *mut c_uchar, length: size_t) -> c_int;
-    pub fn hid_set_nonblocking(device: *mut HidDevice, nonblock: c_int) -> c_int;
-    pub fn hid_send_feature_report(device: *mut HidDevice, data: *const c_uchar, length: size_t)
-            -> c_int;
-    pub fn hid_get_feature_report(device: *mut HidDevice, data: *mut c_uchar, length: size_t)
-            -> c_int;
-    pub fn hid_close(device: *mut HidDevice);
-    pub fn hid_get_manufacturer_string(device: *mut HidDevice, string: *mut wchar_t,
-            maxlen: size_t) -> c_int;
-    pub fn hid_get_product_string(device: *mut HidDevice, string: *mut wchar_t, maxlen: size_t)
-            -> c_int;
-    pub fn hid_get_serial_number_string(device: *mut HidDevice, string: *mut wchar_t,
-            maxlen: size_t) -> c_int;
-    pub fn hid_get_indexed_string(device: *mut HidDevice, string_index: c_int,
-            string: *mut wchar_t, maxlen: size_t) -> c_int;
-    pub fn hid_error(device: *mut HidDevice) -> *const wchar_t;
-}
-
-#[cfg(target_os = "linux")]
-#[link(name = "hidapi-libusb")]
 extern "C" {
     pub fn hid_init() -> c_int;
     pub fn hid_exit() -> c_int;
