@@ -51,12 +51,13 @@ impl HidApi {
         }
     }
 
-    pub fn open(&self, vendor_id: c_ushort, product_id: c_ushort) -> Option<HidDevice> {
+    pub fn open(&self, vendor_id: c_ushort, product_id: c_ushort)
+            -> Result<HidDevice, &'static str> {
         let device = unsafe {ffi::hid_open(vendor_id, product_id, std::ptr::null())};
         if device.is_null() {
-            None
+            Err("Can not open hid device.")
         }else {
-            Some(HidDevice {_hid_device: device})
+            Ok(HidDevice {_hid_device: device})
         }
     }
 }
