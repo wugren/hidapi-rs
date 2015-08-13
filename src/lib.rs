@@ -23,7 +23,7 @@ extern crate libusb_sys;
 mod ffi;
 
 use std::ffi::{CStr};
-use libc::{wchar_t, c_char};
+use libc::{wchar_t, c_char, size_t};
 pub use libc::{c_ushort, c_int};
 
 pub struct HidApi;
@@ -143,5 +143,17 @@ pub struct HidDevice {
 impl Drop for HidDevice {
     fn drop(&mut self) {
         unsafe {ffi::hid_close(self._hid_device)};
+    }
+}
+
+impl HidDevice {
+    pub fn write(&self, data: &[u8]) -> c_int {
+        unsafe {ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t)}
+    }
+
+    pub fn send_feature_report(&self, data: &[u8]) -> c_int {
+        unsafe {
+            ffi::hid_send_feature_report(self._hid_device, data.as_ptr(), data.len() as size_t)
+        }
     }
 }
