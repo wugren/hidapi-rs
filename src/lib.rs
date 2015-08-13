@@ -57,7 +57,7 @@ impl HidApi {
         if device.is_null() {
             Err("Can not open hid device.")
         }else {
-            Ok(HidDevice {_hid_device: device})
+            Ok(HidDevice {_hid_device: device, api: self})
         }
     }
 }
@@ -137,17 +137,19 @@ pub struct HidDeviceInfo {
     interface_number: c_int,
 }
 
-pub struct HidDevice {
+pub struct HidDevice<'a> {
     _hid_device: *mut ffi::HidDevice,
+    #[allow(dead_code)]
+    api: &'a HidApi, // Just to keep everything safe.
 }
 
-impl Drop for HidDevice {
+impl<'a> Drop for HidDevice<'a> {
     fn drop(&mut self) {
         unsafe {ffi::hid_close(self._hid_device)};
     }
 }
 
-impl HidDevice {
+impl <'a> HidDevice<'a> {
     pub fn write(&self, data: &[u8]) -> c_int {
         unsafe {ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t)}
     }
