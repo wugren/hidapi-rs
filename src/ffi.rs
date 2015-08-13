@@ -42,13 +42,14 @@ extern "C" {
     pub fn wcstombs(dest: *mut c_char, src: *const wchar_t, max: size_t) -> size_t;
 }
 
+#[allow(dead_code)]
 extern "C" {
     pub fn hid_init() -> c_int;
     pub fn hid_exit() -> c_int;
     pub fn hid_enumerate(vendor_id: c_ushort, product_id: c_ushort) -> *mut HidDeviceInfo;
     pub fn hid_free_enumeration(hid_device_info: *mut HidDeviceInfo);
     pub fn hid_open(vendor_id: c_ushort, product_id: c_ushort, serial_number: *const wchar_t)
-            -> *const HidDevice;
+            -> *mut HidDevice;
     pub fn hid_open_path(path: *const c_char) -> *mut HidDevice;
     pub fn hid_write(device: *mut HidDevice, data: *const c_uchar, length: size_t) -> c_int;
     pub fn hid_read_timeout(device: *mut HidDevice, data: *mut c_uchar, length: size_t,

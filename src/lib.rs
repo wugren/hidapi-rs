@@ -50,6 +50,15 @@ impl HidApi {
             _next: list,
         }
     }
+
+    pub fn open(&self, vendor_id: c_ushort, product_id: c_ushort) -> Option<HidDevice> {
+        let device = unsafe {ffi::hid_open(vendor_id, product_id, std::ptr::null())};
+        if device.is_null() {
+            None
+        }else {
+            Some(HidDevice {_hid_device: device})
+        }
+    }
 }
 
 impl Drop for HidApi {
@@ -127,14 +136,12 @@ pub struct HidDeviceInfo {
     interface_number: c_int,
 }
 
-pub fn enumerate_hid_devices() {
-
-}
-
 pub struct HidDevice {
-    _c_struct: *mut ffi::HidDevice,
+    _hid_device: *mut ffi::HidDevice,
 }
 
-impl HidDevice {
-
+impl Drop for HidDevice {
+    fn drop(&mut self) {
+        unsafe {ffi::hid_close(self._hid_device)};
+    }
 }
