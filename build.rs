@@ -34,3 +34,12 @@ fn compile() {
     }
     config.compile("libhidapi.a");
 }
+
+#[cfg(target_os = "windows")]
+fn compile() {
+    gcc::Config::new()
+            .file("etc/hidapi/windows/hid.c")
+            .include("etc/hidapi/hidapi")
+            .compile("libhidapi.a");
+    println!("cargo:rustc-link-lib=setupapi");
+}
