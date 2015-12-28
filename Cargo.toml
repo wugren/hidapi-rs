@@ -1,8 +1,8 @@
 [package]
-name = "hidapi_rust"
-version = "0.1.3"
-authors = ["Roland Ruckerbauer <roland.rucky@gmail.com>"]
-repository = "https://github.com/ruabmbua/hidapi_rust"
+name = "hidapi"
+version = "0.1.0"
+authors = ["Roland Ruckerbauer <roland.rucky@gmail.com>", "Osspial <osspial@gmail.com"]
+repository = "https://github.com/Osspial/hidapi_rust"
 description = "In development hidapi binding for rust"
 license = "LGPL-3.0+"
 keywords = ["hid", "api", "binding"]

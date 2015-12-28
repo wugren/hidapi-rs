@@ -1,8 +1,5 @@
-# hidapi_rust [![Crates.io](https://img.shields.io/crates/v/hidapi_rust.svg)](https://crates.io/crates/hidapi_rust) [![Build Status](https://travis-ci.org/ruabmbua/hidapi_rust.svg)](https://travis-ci.org/ruabmbua/hidapi_rust) #
+# hidapi
 
 This crate provides a rust abstraction over the features of the C library
-[hidapi](https://github.com/signal11/hidapi) by signal11.
-
-This crate is a work in progress, but I already use it for one of my own
-projects, which does not need more functionality. Feel free to send pull
-requests, to improve the API, and add missing features.
+[hidapi](https://github.com/signal11/hidapi) by signal11. Based off of
+[hidapi_rust](https://github.com/ruabmbua/hidapi_rust) by ruabmbua.
