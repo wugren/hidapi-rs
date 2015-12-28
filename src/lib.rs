@@ -38,7 +38,7 @@ impl HidApi {
             }
             Ok(HidApi)
         }else {
-            Err("Error already one HidApi in use.")
+            Err("HidApi already in use!")
         }
     }
 
@@ -50,12 +50,12 @@ impl HidApi {
         }
     }
 
-    pub fn open(&self, vendor_id: c_ushort, product_id: c_ushort)
+    pub fn open(&self, vendor_id: u16, product_id: u16)
             -> Result<HidDevice, &'static str> {
         let device = unsafe {ffi::hid_open(vendor_id, product_id, std::ptr::null())};
         if device.is_null() {
-            Err("Can not open hid device.")
-        }else {
+            Err("Cannot open hid device!")
+        } else {
             Ok(HidDevice {_hid_device: device, api: self})
         }
     }

@@ -17,9 +17,9 @@
     along with hidapi_rust.  If not, see <http://www.gnu.org/licenses/>.
 ****************************************************************************/
 
-extern crate hidapi_rust;
+extern crate hidapi;
 
-use hidapi_rust::HidApi;
+use hidapi::HidApi;
 
 fn main() {
     println!("Printing all available hid devices.");
