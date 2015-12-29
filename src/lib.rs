@@ -22,7 +22,7 @@ extern crate libc;
 mod ffi;
 
 use std::ffi::{CStr};
-use libc::{wchar_t, c_char, size_t};
+use libc::{wchar_t, size_t};
 pub use libc::{c_ushort, c_int};
 
 pub struct HidApi;
@@ -42,7 +42,7 @@ impl HidApi {
         }
     }
 
-    pub fn enumerate_info(&self) -> HidDeviceInfoEnumeration {
+    pub fn devices(&self) -> HidDeviceInfoEnumeration {
         let list = unsafe {ffi::hid_enumerate(0, 0)};
         HidDeviceInfoEnumeration {
             _hid_device_info: list,
@@ -70,25 +70,37 @@ impl Drop for HidApi {
     }
 }
 
-unsafe fn wcs_to_string<'a>(src: *const wchar_t) -> String {
-    let length = ffi::wcstombs(std::ptr::null_mut(), src, 0);
-    let mut chars = Vec::<c_char>::with_capacity(length as usize + 1);
-    chars.set_len(length as usize + 1);
-    let ptr = chars.as_mut_ptr();
-    ffi::wcstombs(ptr, src, length);
-    chars[length as usize] = 0;
-    std::str::from_utf8(CStr::from_ptr(ptr).to_bytes()).unwrap().to_owned()
+///Converts a pointer to a wchar_t to a string
+unsafe fn wchar_to_string(wstr: *mut wchar_t) -> Result<String, &'static str> {
+
+    if wstr.is_null() {
+        return Err("Null pointer!");
+    }
+
+    let mut char_vector: Vec<char> = Vec::new();
+    let mut index: isize = 0;
+
+    while *wstr.offset(index) != 0 {
+        use std::char;
+        char_vector.push(char::from_u32(*wstr.offset(index) as u32).unwrap());
+
+        index += 1;
+    }
+
+    Ok(char_vector.into_iter().collect())
 }
 
+///Convert the C hidapi HidDeviceInfo struct to a native HidDeviceInfo struct
 unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
+
     HidDeviceInfo {
         path: std::str::from_utf8(CStr::from_ptr((*src).path).to_bytes()).unwrap().to_owned(),
         vendor_id: (*src).vendor_id,
         product_id: (*src).product_id,
-        //serial_number: wcs_to_string((*src).serial_number),
+        serial_number: wchar_to_string((*src).serial_number).ok(),
         release_number: (*src).release_number,
-        manufactor_string: wcs_to_string((*src).manufactor_string),
-        product_string: wcs_to_string((*src).product_string),
+        manufacturer_string: wchar_to_string((*src).manufacturer_string).ok(),
+        product_string: wchar_to_string((*src).product_string).ok(),
         usage_page: (*src).usage_page,
         usage: (*src).usage,
         interface_number: (*src).interface_number,
@@ -114,7 +126,7 @@ impl Iterator for HidDeviceInfoEnumeration {
     fn next(&mut self) -> Option<HidDeviceInfo> {
         if self._next.is_null() {
             None
-        }else {
+        } else {
             let ret = self._next;
             self._next = unsafe {(*self._next).next};
             Some(unsafe {conv_hid_device_info(ret)})
@@ -127,10 +139,10 @@ pub struct HidDeviceInfo {
     path: String,
     vendor_id: c_ushort,
     product_id: c_ushort,
-    //serial_number: String,
+    serial_number: Option<String>,
     release_number: c_ushort,
-    manufactor_string: String,
-    product_string: String,
+    manufacturer_string: Option<String>,
+    product_string: Option<String>,
     usage_page: c_ushort,
     usage: c_ushort,
     interface_number: c_int,

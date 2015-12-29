@@ -30,16 +30,12 @@ pub struct HidDeviceInfo {
     pub product_id: c_ushort,
     pub serial_number: *mut wchar_t,
     pub release_number: c_ushort,
-    pub manufactor_string: *mut wchar_t,
+    pub manufacturer_string: *mut wchar_t,
     pub product_string: *mut wchar_t,
     pub usage_page: c_ushort,
     pub usage: c_ushort,
     pub interface_number: c_int,
     pub next: *mut HidDeviceInfo,
-}
-
-extern "C" {
-    pub fn wcstombs(dest: *mut c_char, src: *const wchar_t, max: size_t) -> size_t;
 }
 
 #[allow(dead_code)]
