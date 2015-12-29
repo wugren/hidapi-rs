@@ -18,14 +18,48 @@
 ****************************************************************************/
 
 extern crate hidapi;
+extern crate libc;
 
-use hidapi::HidApi;
 
 fn main() {
     println!("Printing all available hid devices.");
+
+    /*
+    unsafe {
+
+        hid_init();
+
+        let devices_root = hid_enumerate(0, 0);
+        
+        let mut next = &*devices_root;
+
+        while !next.next.is_null() {
+            let mut serial_number = "No number found".to_string();
+
+            match wchar_to_string(next.serial_number) {
+                Ok(t) => serial_number = t,
+                _ => ()
+            }
+
+            //Removes mutability from serial_number
+            let serial_number = serial_number;
+
+            println!("{}", serial_number);
+            next = &*next.next;
+        }
+
+
+        hid_free_enumeration(devices_root);
+        hid_exit();
+
+    }
+    */
+
+    /*
     let api = HidApi::new().unwrap();
-    let devices = api.enumerate_info();
+    let devices = api.devices();
     for dev in devices {
         println!("\n{:#?}", dev);
     }
+    */
 }
