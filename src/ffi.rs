@@ -1,20 +1,20 @@
 /****************************************************************************
-    Copyright (c) 2015 Roland Ruckerbauer All Rights Reserved.
+    Copyright (c) 2015 Osspial All Rights Reserved.
 
-    This file is part of hidapi_rust.
+    This file is part of hidapi-rs, based on hidapi_rust by Roland Ruckerbauer.
 
-    hidapi_rust is free software: you can redistribute it and/or modify
+    hidapi-rs is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    hidapi_rust is distributed in the hope that it will be useful,
+    hidapi-rs is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with hidapi_rust.  If not, see <http://www.gnu.org/licenses/>.
+    along with hidapi-rs.  If not, see <http://www.gnu.org/licenses/>.
 ****************************************************************************/
 
 // For documentation look at the corresponding C header file hidapi.h

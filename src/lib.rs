@@ -1,20 +1,20 @@
 /****************************************************************************
-    Copyright (c) 2015 Roland Ruckerbauer All Rights Reserved.
+    Copyright (c) 2015 Osspial All Rights Reserved.
 
-    This file is part of hidapi_rust.
+    This file is part of hidapi-rs, based on hidapi_rust by Roland Ruckerbauer.
 
-    hidapi_rust is free software: you can redistribute it and/or modify
+    hidapi-rs is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
 
-    hidapi_rust is distributed in the hope that it will be useful,
+    hidapi-rs is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with hidapi_rust.  If not, see <http://www.gnu.org/licenses/>.
+    along with hidapi-rs.  If not, see <http://www.gnu.org/licenses/>.
 ****************************************************************************/
 
 extern crate libc;
@@ -25,30 +25,63 @@ use std::ffi::{CStr};
 use libc::{wchar_t, size_t};
 pub use libc::{c_ushort, c_int};
 
-pub struct HidApi;
+pub struct HidApi {
+    devices: Vec<HidDeviceInfo>,
+}
 
 static mut hid_api_lock: bool = false;
 
 impl HidApi {
+
     pub fn new() -> Result<Self, &'static str> {
         if unsafe {!hid_api_lock} {
+
+            //Initialize the HID and prevent other HIDs from being created
             unsafe {
                 ffi::hid_init();
                 hid_api_lock = true;
             }
-            Ok(HidApi)
-        }else {
+
+
+            Ok(HidApi{devices: unsafe {HidApi::get_hid_device_info_vector()}})
+
+        } else {
             Err("HidApi already in use!")
         }
     }
 
-    pub fn devices(&self) -> HidDeviceInfoEnumeration {
-        let list = unsafe {ffi::hid_enumerate(0, 0)};
-        HidDeviceInfoEnumeration {
-            _hid_device_info: list,
-            _next: list,
-        }
+    ///Refresh devices list
+    pub fn refresh_devices(&mut self) {
+        self.devices = unsafe {HidApi::get_hid_device_info_vector()};
     }
+
+    unsafe fn get_hid_device_info_vector() -> Vec<HidDeviceInfo> {
+        let mut device_vector = Vec::with_capacity(8);
+
+        let enumeration = ffi::hid_enumerate(0, 0);
+        {
+            let mut current_device = enumeration;
+
+            'do_while: loop {
+
+                device_vector.push(conv_hid_device_info(current_device));
+
+                if (*current_device).next.is_null() {
+                    break 'do_while;
+                } else {
+                    current_device = (*current_device).next;
+                }
+            }
+        }
+
+        ffi::hid_free_enumeration(enumeration);
+
+        device_vector
+    }
+
+    pub fn devices(&self) -> Vec<HidDeviceInfo> {
+        self.devices.clone()
+    } 
 
     pub fn open(&self, vendor_id: u16, product_id: u16)
             -> Result<HidDevice, &'static str> {
@@ -77,7 +110,7 @@ unsafe fn wchar_to_string(wstr: *mut wchar_t) -> Result<String, &'static str> {
         return Err("Null pointer!");
     }
 
-    let mut char_vector: Vec<char> = Vec::new();
+    let mut char_vector: Vec<char> = Vec::with_capacity(8);
     let mut index: isize = 0;
 
     while *wstr.offset(index) != 0 {
@@ -134,18 +167,24 @@ impl Iterator for HidDeviceInfoEnumeration {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HidDeviceInfo {
     path: String,
-    vendor_id: c_ushort,
-    product_id: c_ushort,
+    vendor_id: u16,
+    product_id: u16,
     serial_number: Option<String>,
-    release_number: c_ushort,
+    release_number: u16,
     manufacturer_string: Option<String>,
     product_string: Option<String>,
-    usage_page: c_ushort,
-    usage: c_ushort,
-    interface_number: c_int,
+    usage_page: u16,
+    usage: u16,
+    interface_number: i32,
+}
+
+impl HidDeviceInfo {
+    pub fn get_product_string(&self) -> Option<String> {
+        self.product_string.clone()
+    }
 }
 
 pub struct HidDevice<'a> {
