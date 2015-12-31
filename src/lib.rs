@@ -182,8 +182,37 @@ pub struct HidDeviceInfo {
 }
 
 impl HidDeviceInfo {
+    /// Platform-specific device path
+    pub fn get_path(&self) -> String {
+        self.path.clone()
+    }
+
+    pub fn get_vendor_id(&self) -> u16 {
+        self.vendor_id
+    }
+
+    pub fn get_product_id(&self) -> u16 {
+        self.product_id
+    }
+
+    pub fn get_serial_number(&self) -> Option<String> {
+        self.serial_number.clone()
+    }
+
+    pub fn get_release_number(&self) -> u16 {
+        self.release_number
+    }
+
+    pub fn get_manufacturer_string(&self) -> Option<String> {
+        self.manufacturer_string.clone()
+    }
+
     pub fn get_product_string(&self) -> Option<String> {
         self.product_string.clone()
+    }
+
+    pub fn get_interface_number(&self) -> i32 {
+        self.interface_number
     }
 }
 
