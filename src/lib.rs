@@ -140,33 +140,6 @@ unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
     }
 }
 
-pub struct HidDeviceInfoEnumeration {
-    _hid_device_info: *mut ffi::HidDeviceInfo,
-    _next: *mut ffi::HidDeviceInfo,
-}
-
-impl Drop for HidDeviceInfoEnumeration {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::hid_free_enumeration(self._hid_device_info);
-        }
-    }
-}
-
-impl Iterator for HidDeviceInfoEnumeration {
-    type Item = HidDeviceInfo;
-
-    fn next(&mut self) -> Option<HidDeviceInfo> {
-        if self._next.is_null() {
-            None
-        } else {
-            let ret = self._next;
-            self._next = unsafe {(*self._next).next};
-            Some(unsafe {conv_hid_device_info(ret)})
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct HidDeviceInfo {
     path: String,
