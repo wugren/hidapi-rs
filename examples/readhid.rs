@@ -18,7 +18,9 @@
 ****************************************************************************/
 
 
-//! Prints out a list of HID devices
+//! Opens a Thrustmaster T-Flight HOTAS X HID and reads data from it. This 
+//! example will not work unless such an HID is plugged in to your system. 
+//! Will update in the future to support all HIDs. 
 
 extern crate hidapi;
 
@@ -26,16 +28,25 @@ use hidapi::HidApi;
 
 fn main() {
     
-    println!("Printing all available hid devices.");
-
     let api = HidApi::new().unwrap();
 
     let devices = api.devices();
-
-    for device in &devices {
-        println!("{:#?}", device);
-    }
-
-    println!("");
     
+    let joystick = api.open(1103, 45320).unwrap();
+
+    loop {
+        let data = joystick.read();
+
+
+        let mut data_string = String::new();
+
+        
+        for u in &data.0[..] {
+            data_string.push_str(&(u.to_string() + " "));
+        }
+        
+
+        println!("{}", data_string);
+        
+    }
 }
