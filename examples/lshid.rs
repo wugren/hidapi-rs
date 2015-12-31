@@ -18,13 +18,12 @@
 ****************************************************************************/
 
 extern crate hidapi;
-extern crate libc;
 
 use hidapi::HidApi;
 
 fn main() {
 
-    /*
+    
     println!("Printing all available hid devices.");
 
     let api = HidApi::new().unwrap();
@@ -36,5 +35,5 @@ fn main() {
     }
 
     println!("");
-    */
+    
 }
