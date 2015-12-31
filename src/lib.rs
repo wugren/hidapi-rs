@@ -83,14 +83,18 @@ impl HidApi {
         self.devices.clone()
     } 
 
-    pub fn open(&self, vendor_id: u16, product_id: u16)
-            -> Result<HidDevice, &'static str> {
+    pub fn open(&self, vendor_id: u16, product_id: u16) -> Result<HidDevice, &'static str> {
+        
         let device = unsafe {ffi::hid_open(vendor_id, product_id, std::ptr::null())};
         if device.is_null() {
             Err("Cannot open hid device!")
         } else {
             Ok(HidDevice {_hid_device: device, api: self})
         }
+    }
+
+    pub fn open_device_info(&self, device_info: &HidDeviceInfo) -> HidDevice {
+        self.open(device_info.get_vendor_id(), device_info.get_product_id()).unwrap()
     }
 }
 
@@ -202,11 +206,21 @@ impl<'a> Drop for HidDevice<'a> {
 }
 
 impl <'a> HidDevice<'a> {
-    pub fn write(&self, data: &[u8]) -> c_int {
+    pub fn write(&self, data: &[u8]) -> i32 {
         unsafe {ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t)}
     }
 
-    pub fn send_feature_report(&self, data: &[u8]) -> c_int {
+    pub fn read<'b> (&self) -> [u8; 256] {
+        const DATA_SIZE: u64 = 256;
+
+        let mut data = [0u8; DATA_SIZE as usize];
+
+        let actual_size = unsafe {ffi::hid_read(self._hid_device, data.as_mut_ptr(), DATA_SIZE)};
+
+        data
+    }
+
+    pub fn send_feature_report(&self, data: &[u8]) -> i32 {
         unsafe {
             ffi::hid_send_feature_report(self._hid_device, data.as_ptr(), data.len() as size_t)
         }
