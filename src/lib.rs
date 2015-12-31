@@ -188,6 +188,14 @@ impl HidDeviceInfo {
         self.product_string.clone()
     }
 
+    pub fn get_usage_page(&self) -> u16 {
+        self.usage_page
+    }
+
+    pub fn get_usage(&self) -> u16 {
+        self.usage
+    }
+
     pub fn get_interface_number(&self) -> i32 {
         self.interface_number
     }
@@ -210,14 +218,14 @@ impl <'a> HidDevice<'a> {
         unsafe {ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t)}
     }
 
-    pub fn read<'b> (&self) -> [u8; 256] {
+    pub fn read<'b> (&self) -> ([u8; 256], i32) {
         const DATA_SIZE: u64 = 256;
 
         let mut data = [0u8; DATA_SIZE as usize];
 
         let actual_size = unsafe {ffi::hid_read(self._hid_device, data.as_mut_ptr(), DATA_SIZE)};
 
-        data
+        (data, actual_size)
     }
 
     pub fn send_feature_report(&self, data: &[u8]) -> i32 {
