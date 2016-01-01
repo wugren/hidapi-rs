@@ -84,8 +84,8 @@ impl HidApi {
     } 
 
     pub fn open(&self, vendor_id: u16, product_id: u16) -> Result<HidDevice, &'static str> {
-        
         let device = unsafe {ffi::hid_open(vendor_id, product_id, std::ptr::null())};
+
         if device.is_null() {
             Err("Cannot open hid device")
         } else {
@@ -93,8 +93,14 @@ impl HidApi {
         }
     }
 
-    pub fn open_device_info(&self, device_info: &HidDeviceInfo) -> HidDevice {
-        self.open(device_info.get_vendor_id(), device_info.get_product_id()).unwrap()
+    pub fn open_path(&self, device_path: &str) -> Result<HidDevice, &'static str> {
+        let device = unsafe {ffi::hid_open_path(std::mem::transmute(device_path.as_ptr()))};
+
+        if device.is_null() {
+            Err("Cannot open hid device")
+        } else {
+            Ok(HidDevice {_hid_device: device, _read_buffer: [0; 512], api: self})
+        }
     }
 }
 
@@ -156,6 +162,7 @@ pub struct HidDeviceInfo {
     usage_page: u16,
     usage: u16,
     interface_number: i32,
+
 }
 
 impl HidDeviceInfo {
@@ -220,7 +227,6 @@ impl <'a> HidDevice<'a> {
     }
 
     pub fn read (&mut self) -> Option<&[u8]> {
-
         let actual_size = unsafe {ffi::hid_read(self._hid_device, self._read_buffer.as_mut_ptr(), 256)};
 
         if actual_size == 0 {
