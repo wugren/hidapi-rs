@@ -32,17 +32,16 @@ fn main() {
 
     let devices = api.devices();
     
-    let joystick = api.open(1103, 45320).unwrap();
+    let mut joystick = api.open(1103, 45320).unwrap();
 
     loop {
-        let data = joystick.read();
+        let data = joystick.read().unwrap();
 
 
         let mut data_string = String::new();
 
-        
-        for u in &data.0[..] {
-            data_string.push_str(&(u.to_string() + " "));
+        for u in data {
+            data_string.push_str(&(u.to_string() + "\t"));
         }
         
 

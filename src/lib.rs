@@ -46,7 +46,7 @@ impl HidApi {
             Ok(HidApi{devices: unsafe {HidApi::get_hid_device_info_vector()}})
 
         } else {
-            Err("HidApi already in use!")
+            Err("HidApi already in use")
         }
     }
 
@@ -87,9 +87,9 @@ impl HidApi {
         
         let device = unsafe {ffi::hid_open(vendor_id, product_id, std::ptr::null())};
         if device.is_null() {
-            Err("Cannot open hid device!")
+            Err("Cannot open hid device")
         } else {
-            Ok(HidDevice {_hid_device: device, api: self})
+            Ok(HidDevice {_hid_device: device, _read_buffer: [0; 512], api: self})
         }
     }
 
@@ -203,6 +203,7 @@ impl HidDeviceInfo {
 
 pub struct HidDevice<'a> {
     _hid_device: *mut ffi::HidDevice,
+    _read_buffer: [u8; 512],
     #[allow(dead_code)]
     api: &'a HidApi, // Just to keep everything safe.
 }
@@ -218,14 +219,17 @@ impl <'a> HidDevice<'a> {
         unsafe {ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t)}
     }
 
-    pub fn read<'b> (&self) -> ([u8; 256], i32) {
-        const DATA_SIZE: u64 = 256;
+    pub fn read (&mut self) -> Option<&[u8]> {
 
-        let mut data = [0u8; DATA_SIZE as usize];
+        let actual_size = unsafe {ffi::hid_read(self._hid_device, self._read_buffer.as_mut_ptr(), 256)};
 
-        let actual_size = unsafe {ffi::hid_read(self._hid_device, data.as_mut_ptr(), DATA_SIZE)};
+        if actual_size == 0 {
+            None
+        } else {
+            let actual_size = actual_size as usize;
 
-        (data, actual_size)
+            Some(&self._read_buffer[0..actual_size])
+        }
     }
 
     pub fn send_feature_report(&self, data: &[u8]) -> i32 {
