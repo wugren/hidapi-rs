@@ -22,6 +22,7 @@ extern crate libc;
 mod ffi;
 
 use std::ffi::{CStr};
+use std::marker::PhantomData;
 use libc::{wchar_t, size_t};
 pub use libc::{c_ushort, c_int};
 
@@ -89,7 +90,7 @@ impl HidApi {
         if device.is_null() {
             Err("Cannot open hid device")
         } else {
-            Ok(HidDevice {_hid_device: device, _read_buffer: [0; 512], api: self})
+            Ok(HidDevice {_hid_device: device, _read_buffer: [0; 512], phantom: PhantomData})
         }
     }
 
@@ -99,7 +100,7 @@ impl HidApi {
         if device.is_null() {
             Err("Cannot open hid device")
         } else {
-            Ok(HidDevice {_hid_device: device, _read_buffer: [0; 512], api: self})
+            Ok(HidDevice {_hid_device: device, _read_buffer: [0; 512], phantom: PhantomData})
         }
     }
 }
@@ -211,8 +212,8 @@ impl HidDeviceInfo {
 pub struct HidDevice<'a> {
     _hid_device: *mut ffi::HidDevice,
     _read_buffer: [u8; 512],
-    #[allow(dead_code)]
-    api: &'a HidApi, // Just to keep everything safe.
+    /// Prevents this from outliving the api instance that created it
+    phantom: PhantomData<&'a ()>
 }
 
 impl<'a> Drop for HidDevice<'a> {
