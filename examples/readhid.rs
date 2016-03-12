@@ -29,14 +29,11 @@ use hidapi::HidApi;
 fn main() {
     
     let api = HidApi::new().unwrap();
-
-    let devices = api.devices();
     
     let mut joystick = api.open(1103, 45320).unwrap();
 
     loop {
         let data = joystick.read().unwrap();
-
 
         let mut data_string = String::new();
 
