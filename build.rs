@@ -43,3 +43,13 @@ fn compile() {
             .compile("libhidapi.a");
     println!("cargo:rustc-link-lib=setupapi");
 }
+
+#[cfg(target_os = "macos")]
+fn compile() {
+    gcc::Config::new()
+            .file("etc/hidapi/mac/hid.c")
+            .include("etc/hidapi/hidapi")
+            .compile("libhidapi.a");
+    println!("cargo:rustc-link-lib=framework=IOKit");
+    println!("cargo:rustc-link-lib=framework=CoreFoundation");
+}
