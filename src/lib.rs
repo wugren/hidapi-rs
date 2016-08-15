@@ -29,14 +29,14 @@ pub type HidError = &'static str;
 pub type HidResult<T> = Result<T, HidError>;
 const STRING_BUF_LEN: usize = 128;
 
+///Object for handling hidapi context and implementing RAII for it.
+///Only one instance can exist at a time.
 pub struct HidApi {
     devices: Vec<HidDeviceInfo>,
 }
 
 static mut hid_api_lock: bool = false;
 
-///Object for handling hidapi context and implementing RAII for it.
-///Only one instance can exist at a time.
 impl HidApi {
     ///Initializes the HID
     pub fn new() -> HidResult<Self> {
