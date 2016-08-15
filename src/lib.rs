@@ -24,7 +24,6 @@ mod ffi;
 use std::ffi::{CStr};
 use std::marker::PhantomData;
 use libc::{wchar_t, size_t};
-pub use libc::{c_ushort, c_int};
 
 pub type HidError = &'static str;
 pub type HidResult<T> = Result<T, HidError>;
@@ -36,6 +35,8 @@ pub struct HidApi {
 
 static mut hid_api_lock: bool = false;
 
+///Object for handling hidapi context and implementing RAII for it.
+///Only one instance can exist at a time.
 impl HidApi {
     ///Initializes the HID
     pub fn new() -> HidResult<Self> {
