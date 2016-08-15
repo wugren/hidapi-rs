@@ -177,6 +177,7 @@ unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
 }
 
 #[derive(Debug, Clone)]
+///Storage for device related information
 pub struct HidDeviceInfo {
     path: String,
     vendor_id: u16,
@@ -247,6 +248,8 @@ impl<'a> Drop for HidDevice<'a> {
 }
 
 impl <'a> HidDevice<'a> {
+    ///Check size returned by other methods, if it's equal to -1 check for
+    ///error and return Error, otherwise return size as unsigned number
     fn check_size(&self, res: i32) -> HidResult<usize> {
         if res == -1 {
             match self.check_error() {
@@ -268,16 +271,36 @@ impl <'a> HidDevice<'a> {
         }
     }
 
+    ///Get a string describing the last error which occurred.
     pub fn check_error(&self) -> HidResult<String> {
         unsafe {wchar_to_string(ffi::hid_error(self._hid_device))}
     }
 
+
+    ///The first byte of `data` must contain the Report ID. For
+    ///devices which only support a single report, this must be set
+    ///to 0x0. The remaining bytes contain the report data. Since
+    ///the Report ID is mandatory, calls to `write()` will always
+    ///contain one more byte than the report contains. For example,
+    ///if a hid report is 16 bytes long, 17 bytes must be passed to
+    ///`write()`, the Report ID (or 0x0, for devices with a
+    ///single report), followed by the report data (16 bytes). In
+    ///this example, the length passed in would be 17.
+    ///`write()` will send the data on the first OUT endpoint, if
+    ///one exists. If it does not, it will send the data through
+    ///the Control Endpoint (Endpoint 0).
     pub fn write(&self, data: &[u8]) -> HidResult<usize> {
+        if data.len() == 0 {
+            return Err("Data must contain at least one byte")
+        }
         let res = unsafe {ffi::hid_write(self._hid_device,
             data.as_ptr(), data.len() as size_t)};
         self.check_size(res)
     }
 
+    ///Input reports are returned to the host through the 'INTERRUPT IN'
+    ///endpoint. The first byte will contain the Report number if the device
+    ///uses numbered reports.
     pub fn read<'b>(&mut self, buf: &'b mut [u8]) -> HidResult<&'b [u8]> {
         let res = unsafe {ffi::hid_read(self._hid_device,
             buf.as_mut_ptr(), buf.len() as size_t)};
@@ -285,6 +308,10 @@ impl <'a> HidDevice<'a> {
         Ok(&buf[..res])
     }
 
+    ///Input reports are returned to the host through the 'INTERRUPT IN'
+    ///endpoint. The first byte will contain the Report number if the device
+    ///uses numbered reports. Timeout measured in milliseconds, set -1 for
+    ///blocking wait.
     pub fn read_timeout<'b>(&self, buf: &'b mut [u8], timeout: i32)
                                 -> HidResult<&'b [u8]> {
         let res = unsafe {ffi::hid_read_timeout(self._hid_device,
@@ -293,7 +320,21 @@ impl <'a> HidDevice<'a> {
         Ok(&buf[..res])
     }
 
+    ///Send a Feature report to the device.
+    ///Feature reports are sent over the Control endpoint as a
+    ///Set_Report transfer.  The first byte of `data` must contain the
+    ///'Report ID'. For devices which only support a single report, this must
+    ///be set to 0x0. The remaining bytes contain the report data. Since the
+    ///'Report ID' is mandatory, calls to `send_feature_report()` will always
+    ///contain one more byte than the report contains. For example, if a hid
+    ///report is 16 bytes long, 17 bytes must be passed to
+    ///`send_feature_report()`: 'the Report ID' (or 0x0, for devices which
+    ///do not use numbered reports), followed by the report data (16 bytes).
+    ///In this example, the length passed in would be 17.
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
+        if data.len() == 0 {
+            return Err("Data must contain at least one byte")
+        }
         let res = unsafe {ffi::hid_send_feature_report(self._hid_device,
             data.as_ptr(), data.len() as size_t)};
         let res = try!(self.check_size(res));
@@ -304,8 +345,14 @@ impl <'a> HidDevice<'a> {
         }
     }
 
+    ///Set the first byte of `data` to the 'Report ID' of the report to be read.
+    ///Upon return, the first byte will still contain the Report ID, and the
+    ///report data will start in data[1].
     pub fn get_feature_report<'b>(&self, buf: &'b mut [u8], report_id: u8)
                                     -> HidResult<&'b [u8]> {
+        if buf.len() == 0 {
+            return Err("buf must contain at least one byte")
+        }
         buf[0] = report_id;
         let res = unsafe {ffi::hid_get_feature_report(self._hid_device,
             buf.as_mut_ptr(), buf.len() as size_t)};
@@ -317,6 +364,11 @@ impl <'a> HidDevice<'a> {
         }
     }
 
+    ///Set the device handle to be in blocking or in non-blocking mode. In
+    ///non-blocking mode calls to `read()` will return immediately with an empty
+    ///slice if there is no data to be read. In blocking mode, `read()` will
+    ///wait (block) until there is data to read before returning.
+    ///Modes can be changed at any time.
     pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
         let res = unsafe {ffi::hid_set_nonblocking(self._hid_device,
             if blocking {0i32} else {1i32} )};
@@ -327,6 +379,7 @@ impl <'a> HidDevice<'a> {
         }
     }
 
+    ///Get The Manufacturer String from a HID device.
     pub fn get_manufacturer_string(&self) -> HidResult<String> {
         let mut buf = [0i32; STRING_BUF_LEN];
         let res = unsafe {ffi::hid_get_manufacturer_string(self._hid_device,
@@ -335,6 +388,7 @@ impl <'a> HidDevice<'a> {
         unsafe{wchar_to_string(buf[..res].as_ptr())}
     }
 
+    ///Get The Manufacturer String from a HID device.
     pub fn get_product_string(&self) -> HidResult<String> {
         let mut buf = [0i32; STRING_BUF_LEN];
         let res = unsafe {ffi::hid_get_product_string(self._hid_device,
@@ -343,6 +397,7 @@ impl <'a> HidDevice<'a> {
         unsafe{wchar_to_string(buf[..res].as_ptr())}
     }
 
+    ///Get The Serial Number String from a HID device.
     pub fn get_serial_number_string(&self) -> HidResult<String> {
         let mut buf = [0i32; STRING_BUF_LEN];
         let res = unsafe {ffi::hid_get_serial_number_string(self._hid_device,
