@@ -348,17 +348,18 @@ impl <'a> HidDevice<'a> {
     ///Set the first byte of `data` to the 'Report ID' of the report to be read.
     ///Upon return, the first byte will still contain the Report ID, and the
     ///report data will start in data[1].
-    pub fn get_feature_report<'b>(&self, buf: &'b mut [u8], report_id: u8)
-                                    -> HidResult<&'b [u8]> {
+    pub fn get_feature_report<'b>(&self, buf: &'b mut [u8]) -> HidResult<&'b [u8]> {
         if buf.len() == 0 {
             return Err("buf must contain at least one byte")
         }
-        buf[0] = report_id;
+        let report_id = buf[0];
         let res = unsafe {ffi::hid_get_feature_report(self._hid_device,
             buf.as_mut_ptr(), buf.len() as size_t)};
         let res = try!(self.check_size(res));
         if res == 0 {
             Err("Zero length, at least one byte was expected")
+        } else if buf[0] != report_id {
+            Err("Report ID mismatch")
         } else {
             Ok(&buf[1..res])
         }
