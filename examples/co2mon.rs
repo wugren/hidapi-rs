@@ -104,7 +104,6 @@ fn main() {
     println!("Product:\t{:?}", dev.get_product_string());
     println!("Serial number:\t{:?}", dev.get_serial_number_string());
 
-
     loop {
         let mut buf = [0; 8];
         if let Err(err) = dev.read_timeout(&mut buf[..], HID_TIMEOUT) {
