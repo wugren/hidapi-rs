@@ -58,7 +58,8 @@ impl HidApi {
         }
     }
 
-    ///Refresh devices list
+    ///Refresh devices list and information about them (to access them use
+    ///`devices()` method)
     pub fn refresh_devices(&mut self) {
         self.devices = unsafe {HidApi::get_hid_device_info_vector()};
     }
