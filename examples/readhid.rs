@@ -33,7 +33,8 @@ fn main() {
     let mut joystick = api.open(1103, 45320).unwrap();
 
     loop {
-        let data = joystick.read().unwrap();
+        let mut buf = [0u8; 256];
+        let data = joystick.read(&mut buf[..]).unwrap();
 
         let mut data_string = String::new();
 
