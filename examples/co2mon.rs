@@ -1,5 +1,5 @@
 /****************************************************************************
-    Copyright (c) 2015 Osspial All Rights Reserved.
+    Copyright (c) 2015 Artyom Pavlov All Rights Reserved.
 
     This file is part of hidapi-rs, based on hidapi_rust by Roland Ruckerbauer.
     It's also based on the Oleg Bulatov's work (https://github.com/dmage/co2mon)
