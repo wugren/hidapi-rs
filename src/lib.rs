@@ -342,7 +342,7 @@ impl <'a> HidDevice<'a> {
     /// Input reports are returned to the host through the 'INTERRUPT IN'
     /// endpoint. The first byte will contain the Report number if the device
     /// uses numbered reports.
-    pub fn read(&mut self, buf: &mut [u8]) -> HidResult<usize> {
+    pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
         let res = unsafe {ffi::hid_read(self._hid_device,
             buf.as_mut_ptr(), buf.len() as size_t)};
         self.check_size(res)
