@@ -34,6 +34,7 @@ const HID_TIMEOUT: i32 = 5000;
 const RETRY_SEC: u64 = 1;
 const DEV_VID: u16 = 0x04d9;
 const DEV_PID: u16 = 0xa052;
+const PACKET_SIZE: usize = 8;
 
 enum CO2Result {
     Temperature(f32),
@@ -46,8 +47,8 @@ fn decode_temperature(value: u16) -> f32 {
     (value as f32)*0.0625 - 273.15
 }
 
-fn decode_buf(buf: [u8; 8]) -> CO2Result {
-    let mut res: [u8; 8] = [
+fn decode_buf(buf: [u8; PACKET_SIZE]) -> CO2Result {
+    let mut res: [u8; PACKET_SIZE] = [
         (buf[3] << 5) | (buf[2] >> 3),
         (buf[2] << 5) | (buf[4] >> 3),
         (buf[4] << 5) | (buf[0] >> 3),
@@ -59,7 +60,7 @@ fn decode_buf(buf: [u8; 8]) -> CO2Result {
     ];
 
     let magic_word = b"Htemp99e";
-    for i in 0..8 {
+    for i in 0..PACKET_SIZE {
         let sub_val:u8 = (magic_word[i] << 4) | (magic_word[i] >> 4);
         res[i] = u8::overflowing_sub(res[i], sub_val).0;
     }
@@ -76,7 +77,14 @@ fn decode_buf(buf: [u8; 8]) -> CO2Result {
     let val: u16 = ((res[1] as u16) << 8) + res[2] as u16;
     match res[0] {
         CODE_TEMPERATURE => CO2Result::Temperature(decode_temperature(val)),
-        CODE_CONCENTRATION => CO2Result::Concentration(val),
+        CODE_CONCENTRATION => {
+            if val > 3000 {
+                CO2Result::Error(
+                    "Concentration bigger than 3000 (uninitialized device?)")
+            } else {
+                CO2Result::Concentration(val)
+            }
+        },
         _ => CO2Result::Unknown(res[0], val),
     }
 }
@@ -98,25 +106,36 @@ fn main() {
 
     let dev = open_device(&api);
 
-    dev.send_feature_report(&[0; 8]).expect("Feature report failed");
+    dev.send_feature_report(&[0; PACKET_SIZE]).expect("Feature report failed");
 
-    println!("Manufacurer:\t{:?}", dev.get_manufacturer_string());
-    println!("Product:\t{:?}", dev.get_product_string());
-    println!("Serial number:\t{:?}", dev.get_serial_number_string());
+    println!("Manufacurer:\t{}", dev.get_manufacturer_string()
+        .expect("Failed to read manufacurer string"));
+    println!("Product:\t{}", dev.get_product_string()
+        .expect("Failed to read product string"));
+    println!("Serial number:\t{}", dev.get_serial_number_string()
+        .expect("Failed to read serial number"));
 
     loop {
-        let mut buf = [0; 8];
-        if let Err(err) = dev.read_timeout(&mut buf[..], HID_TIMEOUT) {
-            println!("Error: {:?}", err);
-            sleep(Duration::from_secs(RETRY_SEC));
-            continue;
+        let mut buf = [0; PACKET_SIZE];
+        match dev.read_timeout(&mut buf[..], HID_TIMEOUT) {
+            Ok(PACKET_SIZE) => (),
+            Ok(res) => {
+                println!("Error: unexpected length of data: {}/{}",
+                    res, PACKET_SIZE);
+                continue;
+            },
+            Err(err) => {
+                println!("Error: {:}", err);
+                sleep(Duration::from_secs(RETRY_SEC));
+                continue;
+            }
         }
         match decode_buf(buf) {
             CO2Result::Temperature(val) => println!("Temp:\t{:?}", val),
             CO2Result::Concentration(val) => println!("Conc:\t{:?}", val),
             CO2Result::Unknown(..) => (),
             CO2Result::Error(val) => {
-                println!("Error:\t{:?}", val);
+                println!("Error:\t{}", val);
                 sleep(Duration::from_secs(RETRY_SEC));
             },
         }
