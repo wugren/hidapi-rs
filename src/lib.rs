@@ -28,29 +28,25 @@
 //! [dependencies]
 //! hidapi = "0.3"
 //! ```
-//!
-//! And this in your crate root:
-//!
-//! ```rust
+//! Example:
+//! 
+//! ```rust,no_run
 //! extern crate hidapi;
-//! ```
-//! 
-//! # Example
-//! 
-//! ```rust
-//! let api = HidApi::new().unwrap();
+//!
+//! let api = hidapi::HidApi::new().unwrap();
 //! // Print out information about all connected devices
 //! for device in &api.devices() {
 //!     println!("{:#?}", device);
 //! }
 //!
 //! // Connect to device using its VID and PID
+//! let (VID, PID) = (0x0123, 0x3456);
 //! let device = api.open(VID, PID).unwrap();
 //!
 //! // Read data from device
 //! let mut buf = [0u8; 8];
 //! let res = device.read(&mut buf[..]).unwrap();
-//! println!("Read: {:?}", buf[..res]);
+//! println!("Read: {:?}", &buf[..res]);
 //!
 //! // Write data to device
 //! let buf = [0u8, 1, 2, 3, 4];
