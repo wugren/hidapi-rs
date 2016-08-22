@@ -28,16 +28,17 @@ use hidapi::HidApi;
 
 fn main() {
     
-    let api = HidApi::new().unwrap();
+    let api = HidApi::new().expect("Failed to create API instance");
     
-    let mut joystick = api.open(1103, 45320).unwrap();
+    let joystick = api.open(1103, 45320).expect("Failed to open device");
 
     loop {
-        let data = joystick.read().unwrap();
+        let mut buf = [0u8; 256];
+        let res = joystick.read(&mut buf[..]).unwrap();
 
         let mut data_string = String::new();
 
-        for u in data {
+        for u in &buf[..res] {
             data_string.push_str(&(u.to_string() + "\t"));
         }
         
