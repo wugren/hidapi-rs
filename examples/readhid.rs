@@ -28,9 +28,9 @@ use hidapi::HidApi;
 
 fn main() {
     
-    let api = HidApi::new().unwrap();
+    let api = HidApi::new().expect("Failed to create API instance");
     
-    let joystick = api.open(1103, 45320).unwrap();
+    let joystick = api.open(1103, 45320).expect("Failed to open device");
 
     loop {
         let mut buf = [0u8; 256];
