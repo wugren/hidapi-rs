@@ -135,7 +135,7 @@ impl HidApi {
         let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
 
         if device.is_null() {
-            Err("Can't open hid device")
+            Err("Unable to open hid device")
         } else {
             Ok(HidDevice {
                 _hid_device: device,
@@ -149,7 +149,7 @@ impl HidApi {
     pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
         let device = unsafe { ffi::hid_open(vid, pid, std::mem::transmute(sn.as_ptr())) };
         if device.is_null() {
-            Err("Can't open hid device")
+            Err("Unable to open hid device")
         } else {
             Ok(HidDevice {
                 _hid_device: device,
@@ -164,7 +164,7 @@ impl HidApi {
         let device = unsafe { ffi::hid_open_path(std::mem::transmute(device_path.as_ptr())) };
 
         if device.is_null() {
-            Err("Cannot open hid device")
+            Err("Unable to open hid device")
         } else {
             Ok(HidDevice {
                 _hid_device: device,
@@ -224,59 +224,16 @@ unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
 #[derive(Debug, Clone)]
 /// Storage for device related information
 pub struct HidDeviceInfo {
-    path: String,
-    vendor_id: u16,
-    product_id: u16,
-    serial_number: Option<String>,
-    release_number: u16,
-    manufacturer_string: Option<String>,
-    product_string: Option<String>,
-    usage_page: u16,
-    usage: u16,
-    interface_number: i32,
-}
-
-impl HidDeviceInfo {
-    ///  Platform-specific device path
-    pub fn get_path(&self) -> String {
-        self.path.clone()
-    }
-
-    pub fn get_vendor_id(&self) -> u16 {
-        self.vendor_id
-    }
-
-    pub fn get_product_id(&self) -> u16 {
-        self.product_id
-    }
-
-    pub fn get_serial_number(&self) -> Option<String> {
-        self.serial_number.clone()
-    }
-
-    pub fn get_release_number(&self) -> u16 {
-        self.release_number
-    }
-
-    pub fn get_manufacturer_string(&self) -> Option<String> {
-        self.manufacturer_string.clone()
-    }
-
-    pub fn get_product_string(&self) -> Option<String> {
-        self.product_string.clone()
-    }
-
-    pub fn get_usage_page(&self) -> u16 {
-        self.usage_page
-    }
-
-    pub fn get_usage(&self) -> u16 {
-        self.usage
-    }
-
-    pub fn get_interface_number(&self) -> i32 {
-        self.interface_number
-    }
+    pub path: String,
+    pub vendor_id: u16,
+    pub product_id: u16,
+    pub serial_number: Option<String>,
+    pub release_number: u16,
+    pub manufacturer_string: Option<String>,
+    pub product_string: Option<String>,
+    pub usage_page: u16,
+    pub usage: u16,
+    pub interface_number: i32,
 }
 
 /// Object for accessing HID device
