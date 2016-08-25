@@ -28,9 +28,9 @@ fn main() {
 fn compile() {
     let mut config = gcc::Config::new();
     config.file("etc/hidapi/libusb/hid.c").include("etc/hidapi/hidapi");
-    let lib = pkg_config::find_library("libusb-1.0").unwrap();
+    let lib = pkg_config::find_library("libusb-1.0").expect("Unable to find libusb-1.0");
     for path in lib.include_paths {
-        config.include(path.to_str().unwrap());
+        config.include(path.to_str().expect("Failed to convert include path to str"));
     }
     config.compile("libhidapi.a");
 }

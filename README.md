@@ -6,7 +6,7 @@ This crate provides a rust abstraction over the features of the C library
 
 # Usage
 
-This crate is [on crates.io](https://crates.io/crates/hidapi) and can be
+This crate is on [crates.io](https://crates.io/crates/hidapi) and can be
 used by adding `hidapi` to the dependencies in your project's `Cargo.toml`.
 
 ```toml
@@ -40,4 +40,4 @@ println!("Wrote: {:?} byte(s)", res);
 ```
 
 # Documentation
-You can generate documentation by running `cargo doc` for this crate.
+Available at [on crates.io](https://beta.docs.rs/hidapi)

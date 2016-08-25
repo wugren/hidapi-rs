@@ -29,7 +29,7 @@
 //! [dependencies]
 //! hidapi = "0.3"
 //! ```
-//! Example:
+//! # Example:
 //!
 //! ```rust,no_run
 //! extern crate hidapi;
