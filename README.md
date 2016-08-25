@@ -13,7 +13,7 @@ used by adding `hidapi` to the dependencies in your project's `Cargo.toml`.
 [dependencies]
 hidapi = "0.3"
 ```
-Example:
+# Example:
 
 ```rust
 extern crate hidapi;
