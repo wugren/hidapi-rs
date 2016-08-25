@@ -40,4 +40,4 @@ println!("Wrote: {:?} byte(s)", res);
 ```
 
 # Documentation
-Available at [on crates.io](https://beta.docs.rs/hidapi)
+Available at [beta.docs.rs](https://beta.docs.rs/hidapi).
