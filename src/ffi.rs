@@ -1,21 +1,21 @@
-/****************************************************************************
-    Copyright (c) 2015 Osspial All Rights Reserved.
-
-    This file is part of hidapi-rs, based on hidapi_rust by Roland Ruckerbauer.
-
-    hidapi-rs is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    hidapi-rs is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with hidapi-rs.  If not, see <http://www.gnu.org/licenses/>.
-****************************************************************************/
+/// **************************************************************************
+/// Copyright (c) 2015 Osspial All Rights Reserved.
+///
+/// This file is part of hidapi-rs, based on hidapi_rust by Roland Ruckerbauer.
+///
+/// hidapi-rs is free software: you can redistribute it and/or modify
+/// it under the terms of the GNU General Public License as published by
+/// the Free Software Foundation, either version 3 of the License, or
+/// (at your option) any later version.
+///
+/// hidapi-rs is distributed in the hope that it will be useful,
+/// but WITHOUT ANY WARRANTY; without even the implied warranty of
+/// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+/// GNU General Public License for more details.
+///
+/// You should have received a copy of the GNU General Public License
+/// along with hidapi-rs.  If not, see <http://www.gnu.org/licenses/>.
+/// *************************************************************************
 
 // For documentation look at the corresponding C header file hidapi.h
 
@@ -44,26 +44,44 @@ extern "C" {
     pub fn hid_exit() -> c_int;
     pub fn hid_enumerate(vendor_id: c_ushort, product_id: c_ushort) -> *mut HidDeviceInfo;
     pub fn hid_free_enumeration(hid_device_info: *mut HidDeviceInfo);
-    pub fn hid_open(vendor_id: c_ushort, product_id: c_ushort, serial_number: *const wchar_t)
-            -> *mut HidDevice;
+    pub fn hid_open(vendor_id: c_ushort,
+                    product_id: c_ushort,
+                    serial_number: *const wchar_t)
+                    -> *mut HidDevice;
     pub fn hid_open_path(path: *const c_char) -> *mut HidDevice;
     pub fn hid_write(device: *mut HidDevice, data: *const c_uchar, length: size_t) -> c_int;
-    pub fn hid_read_timeout(device: *mut HidDevice, data: *mut c_uchar, length: size_t,
-            milleseconds: c_int) -> c_int;
+    pub fn hid_read_timeout(device: *mut HidDevice,
+                            data: *mut c_uchar,
+                            length: size_t,
+                            milleseconds: c_int)
+                            -> c_int;
     pub fn hid_read(device: *mut HidDevice, data: *mut c_uchar, length: size_t) -> c_int;
     pub fn hid_set_nonblocking(device: *mut HidDevice, nonblock: c_int) -> c_int;
-    pub fn hid_send_feature_report(device: *mut HidDevice, data: *const c_uchar, length: size_t)
-            -> c_int;
-    pub fn hid_get_feature_report(device: *mut HidDevice, data: *mut c_uchar, length: size_t)
-            -> c_int;
+    pub fn hid_send_feature_report(device: *mut HidDevice,
+                                   data: *const c_uchar,
+                                   length: size_t)
+                                   -> c_int;
+    pub fn hid_get_feature_report(device: *mut HidDevice,
+                                  data: *mut c_uchar,
+                                  length: size_t)
+                                  -> c_int;
     pub fn hid_close(device: *mut HidDevice);
-    pub fn hid_get_manufacturer_string(device: *mut HidDevice, string: *mut wchar_t,
-            maxlen: size_t) -> c_int;
-    pub fn hid_get_product_string(device: *mut HidDevice, string: *mut wchar_t, maxlen: size_t)
-            -> c_int;
-    pub fn hid_get_serial_number_string(device: *mut HidDevice, string: *mut wchar_t,
-            maxlen: size_t) -> c_int;
-    pub fn hid_get_indexed_string(device: *mut HidDevice, string_index: c_int,
-            string: *mut wchar_t, maxlen: size_t) -> c_int;
+    pub fn hid_get_manufacturer_string(device: *mut HidDevice,
+                                       string: *mut wchar_t,
+                                       maxlen: size_t)
+                                       -> c_int;
+    pub fn hid_get_product_string(device: *mut HidDevice,
+                                  string: *mut wchar_t,
+                                  maxlen: size_t)
+                                  -> c_int;
+    pub fn hid_get_serial_number_string(device: *mut HidDevice,
+                                        string: *mut wchar_t,
+                                        maxlen: size_t)
+                                        -> c_int;
+    pub fn hid_get_indexed_string(device: *mut HidDevice,
+                                  string_index: c_int,
+                                  string: *mut wchar_t,
+                                  maxlen: size_t)
+                                  -> c_int;
     pub fn hid_error(device: *mut HidDevice) -> *const wchar_t;
 }

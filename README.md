@@ -1,4 +1,4 @@
-# hidapi
+# hidapi [![Build Status](https://travis-ci.org/Osspial/hidapi-rs.svg?branch=master)](https://travis-ci.org/Osspial/hidapi-rs) [![Version](https://img.shields.io/crates/v/hidapi.svg)](https://crates.io/crates/hidapi) [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://github.com/Osspial/hidapi-rs/blob/master/LICENSE.txt) [![Documentation](https://docs.rs/hidapi/badge.svg)](https://docs.rs/hidapi)
 
 This crate provides a rust abstraction over the features of the C library
 [hidapi](https://github.com/signal11/hidapi) by signal11. Based off of
@@ -6,14 +6,14 @@ This crate provides a rust abstraction over the features of the C library
 
 # Usage
 
-This crate is [on crates.io](https://crates.io/crates/hidapi) and can be
+This crate is on [crates.io](https://crates.io/crates/hidapi) and can be
 used by adding `hidapi` to the dependencies in your project's `Cargo.toml`.
 
 ```toml
 [dependencies]
 hidapi = "0.3"
 ```
-Example:
+# Example
 
 ```rust
 extern crate hidapi;
@@ -40,4 +40,4 @@ println!("Wrote: {:?} byte(s)", res);
 ```
 
 # Documentation
-You can generate documentation by running `cargo doc` for this crate.
+Available at [docs.rs](https://docs.rs/hidapi).

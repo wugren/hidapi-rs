@@ -1,21 +1,22 @@
-/****************************************************************************
-    Copyright (c) 2015 Osspial All Rights Reserved.
+// **************************************************************************
+// Copyright (c) 2015 Osspial All Rights Reserved.
+//
+// This file is part of hidapi-rs, based on hidapi_rust by Roland Ruckerbauer.
+//
+// hidapi-rs is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// hidapi-rs is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with hidapi-rs.  If not, see <http://www.gnu.org/licenses/>.
+// *************************************************************************
 
-    This file is part of hidapi-rs, based on hidapi_rust by Roland Ruckerbauer.
-
-    hidapi-rs is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    hidapi-rs is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with hidapi-rs.  If not, see <http://www.gnu.org/licenses/>.
-****************************************************************************/
 //! This crate provides a rust abstraction over the features of the C library
 //! hidapi by [signal11](https://github.com/signal11/hidapi).
 //!
@@ -28,8 +29,8 @@
 //! [dependencies]
 //! hidapi = "0.3"
 //! ```
-//! Example:
-//! 
+//! # Example
+//!
 //! ```rust,no_run
 //! extern crate hidapi;
 //!
@@ -57,7 +58,7 @@ extern crate libc;
 
 mod ffi;
 
-use std::ffi::{CStr};
+use std::ffi::CStr;
 use std::marker::PhantomData;
 use libc::{wchar_t, size_t, c_int};
 
@@ -76,9 +77,9 @@ static mut hid_api_lock: bool = false;
 impl HidApi {
     /// Initializes the HID
     pub fn new() -> HidResult<Self> {
-        if unsafe {!hid_api_lock} {
+        if unsafe { !hid_api_lock } {
 
-            //Initialize the HID and prevent other HIDs from being created
+            // Initialize the HID and prevent other HIDs from being created
             unsafe {
                 if ffi::hid_init() == -1 {
                     return Err("Failed to init hid");
@@ -87,7 +88,7 @@ impl HidApi {
             }
 
 
-            Ok(HidApi{devices: unsafe {HidApi::get_hid_device_info_vector()}})
+            Ok(HidApi { devices: unsafe { HidApi::get_hid_device_info_vector() } })
 
         } else {
             Err("HidApi already in use")
@@ -97,7 +98,7 @@ impl HidApi {
     /// Refresh devices list and information about them (to access them use
     /// `devices()` method)
     pub fn refresh_devices(&mut self) {
-        self.devices = unsafe {HidApi::get_hid_device_info_vector()};
+        self.devices = unsafe { HidApi::get_hid_device_info_vector() };
     }
 
     unsafe fn get_hid_device_info_vector() -> Vec<HidDeviceInfo> {
@@ -127,41 +128,48 @@ impl HidApi {
     /// Returns list of objects containing information about connected devices
     pub fn devices(&self) -> Vec<HidDeviceInfo> {
         self.devices.clone()
-    } 
+    }
 
     /// Open a HID device using a Vendor ID (VID) and Product ID (PID)
     pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
-        let device = unsafe {ffi::hid_open(vid, pid, std::ptr::null())};
+        let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
 
         if device.is_null() {
             Err("Unable to open hid device")
         } else {
-            Ok(HidDevice {_hid_device: device, phantom: PhantomData})
+            Ok(HidDevice {
+                _hid_device: device,
+                phantom: PhantomData,
+            })
         }
     }
 
     /// Open a HID device using a Vendor ID (VID), Product ID (PID) and
     /// a serial number.
     pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
-        let device = unsafe {ffi::hid_open(vid, pid,
-            std::mem::transmute(sn.as_ptr()))};
+        let device = unsafe { ffi::hid_open(vid, pid, std::mem::transmute(sn.as_ptr())) };
         if device.is_null() {
             Err("Unable to open hid device")
         } else {
-            Ok(HidDevice {_hid_device: device, phantom: PhantomData})
+            Ok(HidDevice {
+                _hid_device: device,
+                phantom: PhantomData,
+            })
         }
     }
 
     /// The path name be determined by calling hid_enumerate(), or a
     /// platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
     pub fn open_path(&self, device_path: &str) -> HidResult<HidDevice> {
-        let device = unsafe {ffi::hid_open_path(
-            std::mem::transmute(device_path.as_ptr()))};
+        let device = unsafe { ffi::hid_open_path(std::mem::transmute(device_path.as_ptr())) };
 
         if device.is_null() {
             Err("Unable to open hid device")
         } else {
-            Ok(HidDevice {_hid_device: device, phantom: PhantomData})
+            Ok(HidDevice {
+                _hid_device: device,
+                phantom: PhantomData,
+            })
         }
     }
 }
@@ -188,7 +196,7 @@ unsafe fn wchar_to_string(wstr: *const wchar_t) -> HidResult<String> {
         use std::char;
         char_vector.push(match char::from_u32(*wstr.offset(index) as u32) {
             Some(ch) => ch,
-            None => return Err("Unable to add next char")
+            None => return Err("Unable to add next char"),
         });
 
         index += 1;
@@ -232,16 +240,16 @@ pub struct HidDeviceInfo {
 pub struct HidDevice<'a> {
     _hid_device: *mut ffi::HidDevice,
     /// Prevents this from outliving the api instance that created it
-    phantom: PhantomData<&'a ()>
+    phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> Drop for HidDevice<'a> {
     fn drop(&mut self) {
-        unsafe {ffi::hid_close(self._hid_device)};
+        unsafe { ffi::hid_close(self._hid_device) };
     }
 }
 
-impl <'a> HidDevice<'a> {
+impl<'a> HidDevice<'a> {
     /// Check size returned by other methods, if it's equal to -1 check for
     /// error and return Error, otherwise return size as unsigned number
     fn check_size(&self, res: i32) -> HidResult<usize> {
@@ -254,9 +262,9 @@ impl <'a> HidDevice<'a> {
                         println!("{:?}", err);
                         Err("Detected error")
                     }
-                },
+                }
                 Err(_) => {
-                    //Err(err)
+                    // Err(err)
                     Err("Failed to retrieve error message")
                 }
             }
@@ -267,7 +275,7 @@ impl <'a> HidDevice<'a> {
 
     /// Get a string describing the last error which occurred.
     pub fn check_error(&self) -> HidResult<String> {
-        unsafe {wchar_to_string(ffi::hid_error(self._hid_device))}
+        unsafe { wchar_to_string(ffi::hid_error(self._hid_device)) }
     }
 
 
@@ -285,10 +293,9 @@ impl <'a> HidDevice<'a> {
     /// the Control Endpoint (Endpoint 0).
     pub fn write(&self, data: &[u8]) -> HidResult<usize> {
         if data.len() == 0 {
-            return Err("Data must contain at least one byte")
+            return Err("Data must contain at least one byte");
         }
-        let res = unsafe {ffi::hid_write(self._hid_device,
-            data.as_ptr(), data.len() as size_t)};
+        let res = unsafe { ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t) };
         self.check_size(res)
     }
 
@@ -296,8 +303,7 @@ impl <'a> HidDevice<'a> {
     /// endpoint. The first byte will contain the Report number if the device
     /// uses numbered reports.
     pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let res = unsafe {ffi::hid_read(self._hid_device,
-            buf.as_mut_ptr(), buf.len() as size_t)};
+        let res = unsafe { ffi::hid_read(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t) };
         self.check_size(res)
     }
 
@@ -306,8 +312,12 @@ impl <'a> HidDevice<'a> {
     /// uses numbered reports. Timeout measured in milliseconds, set -1 for
     /// blocking wait.
     pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        let res = unsafe {ffi::hid_read_timeout(self._hid_device,
-            buf.as_mut_ptr(), buf.len() as size_t, timeout)};
+        let res = unsafe {
+            ffi::hid_read_timeout(self._hid_device,
+                                  buf.as_mut_ptr(),
+                                  buf.len() as size_t,
+                                  timeout)
+        };
         self.check_size(res)
     }
 
@@ -324,10 +334,11 @@ impl <'a> HidDevice<'a> {
     /// In this example, the length passed in would be 17.
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
         if data.len() == 0 {
-            return Err("Data must contain at least one byte")
+            return Err("Data must contain at least one byte");
         }
-        let res = unsafe {ffi::hid_send_feature_report(self._hid_device,
-            data.as_ptr(), data.len() as size_t)};
+        let res = unsafe {
+            ffi::hid_send_feature_report(self._hid_device, data.as_ptr(), data.len() as size_t)
+        };
         let res = try!(self.check_size(res));
         if res != data.len() {
             Err("Failed to send feature report completely")
@@ -340,8 +351,9 @@ impl <'a> HidDevice<'a> {
     /// Upon return, the first byte will still contain the Report ID, and the
     /// report data will start in data[1].
     pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let res = unsafe {ffi::hid_get_feature_report(self._hid_device,
-            buf.as_mut_ptr(), buf.len() as size_t)};
+        let res = unsafe {
+            ffi::hid_get_feature_report(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t)
+        };
         self.check_size(res)
     }
 
@@ -351,8 +363,9 @@ impl <'a> HidDevice<'a> {
     /// wait (block) until there is data to read before returning.
     /// Modes can be changed at any time.
     pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
-        let res = unsafe {ffi::hid_set_nonblocking(self._hid_device,
-            if blocking {0i32} else {1i32} )};
+        let res = unsafe {
+            ffi::hid_set_nonblocking(self._hid_device, if blocking { 0i32 } else { 1i32 })
+        };
         if res == -1 {
             Err("Failed to set blocking mode")
         } else {
@@ -363,36 +376,49 @@ impl <'a> HidDevice<'a> {
     /// Get The Manufacturer String from a HID device.
     pub fn get_manufacturer_string(&self) -> HidResult<String> {
         let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {ffi::hid_get_manufacturer_string(self._hid_device,
-            buf.as_mut_ptr(), STRING_BUF_LEN as size_t)};
+        let res = unsafe {
+            ffi::hid_get_manufacturer_string(self._hid_device,
+                                             buf.as_mut_ptr(),
+                                             STRING_BUF_LEN as size_t)
+        };
         let res = try!(self.check_size(res));
-        unsafe{wchar_to_string(buf[..res].as_ptr())}
+        unsafe { wchar_to_string(buf[..res].as_ptr()) }
     }
 
     /// Get The Manufacturer String from a HID device.
     pub fn get_product_string(&self) -> HidResult<String> {
         let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {ffi::hid_get_product_string(self._hid_device,
-            buf.as_mut_ptr(), STRING_BUF_LEN as size_t)};
+        let res = unsafe {
+            ffi::hid_get_product_string(self._hid_device,
+                                        buf.as_mut_ptr(),
+                                        STRING_BUF_LEN as size_t)
+        };
         let res = try!(self.check_size(res));
-        unsafe{wchar_to_string(buf[..res].as_ptr())}
+        unsafe { wchar_to_string(buf[..res].as_ptr()) }
     }
 
     /// Get The Serial Number String from a HID device.
     pub fn get_serial_number_string(&self) -> HidResult<String> {
         let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {ffi::hid_get_serial_number_string(self._hid_device,
-            buf.as_mut_ptr(), STRING_BUF_LEN as size_t)};
+        let res = unsafe {
+            ffi::hid_get_serial_number_string(self._hid_device,
+                                              buf.as_mut_ptr(),
+                                              STRING_BUF_LEN as size_t)
+        };
         let res = try!(self.check_size(res));
-        unsafe{wchar_to_string(buf[..res].as_ptr())}
+        unsafe { wchar_to_string(buf[..res].as_ptr()) }
     }
 
     /// Get a string from a HID device, based on its string index.
     pub fn get_indexed_string(&self, index: i32) -> HidResult<String> {
         let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {ffi::hid_get_indexed_string(self._hid_device,
-            index as c_int, buf.as_mut_ptr(), STRING_BUF_LEN)};
+        let res = unsafe {
+            ffi::hid_get_indexed_string(self._hid_device,
+                                        index as c_int,
+                                        buf.as_mut_ptr(),
+                                        STRING_BUF_LEN)
+        };
         let res = try!(self.check_size(res));
-        unsafe{wchar_to_string(buf[..res].as_ptr())}
+        unsafe { wchar_to_string(buf[..res].as_ptr()) }
     }
 }
