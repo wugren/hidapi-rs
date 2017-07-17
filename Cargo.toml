@@ -4,10 +4,11 @@ version = "0.3.1"
 authors = [
     "Roland Ruckerbauer <roland.rucky@gmail.com>",
     "Osspial <osspial@gmail.com>",
-    "Artyom Pavlov <newpavlov@gmail.com>"]
+    "Artyom Pavlov <newpavlov@gmail.com>"
+]
 repository = "https://github.com/Osspial/hidapi-rs"
 description = "Rust-y wrapper around hidapi"
-license = "LGPL-3.0+"
+license = "MIT"
 keywords = ["hid", "api", "usb","binding", "wrapper"]
 build = "build.rs"
 links = "hidapi"
