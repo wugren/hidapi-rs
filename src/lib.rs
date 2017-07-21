@@ -14,7 +14,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! hidapi = "0.3"
+//! hidapi = "0.4"
 //! ```
 //! # Example
 //!
@@ -59,19 +59,19 @@ pub struct HidApi {
     devices: Vec<HidDeviceInfo>,
 }
 
-static mut hid_api_lock: bool = false;
+static mut HID_API_LOCK: bool = false;
 
 impl HidApi {
     /// Initializes the HID
     pub fn new() -> HidResult<Self> {
-        if unsafe { !hid_api_lock } {
+        if unsafe { !HID_API_LOCK } {
 
             // Initialize the HID and prevent other HIDs from being created
             unsafe {
                 if ffi::hid_init() == -1 {
                     return Err("Failed to init hid");
                 }
-                hid_api_lock = true;
+                HID_API_LOCK = true;
             }
 
 
@@ -95,19 +95,16 @@ impl HidApi {
         {
             let mut current_device = enumeration;
 
-            'do_while: loop {
-
+            while !current_device.is_null() {
                 device_vector.push(conv_hid_device_info(current_device));
-
-                if (*current_device).next.is_null() {
-                    break 'do_while;
-                } else {
-                    current_device = (*current_device).next;
-                }
+                current_device = (*current_device).next;
             }
+
         }
 
-        ffi::hid_free_enumeration(enumeration);
+        if !enumeration.is_null() {
+            ffi::hid_free_enumeration(enumeration);
+        }
 
         device_vector
     }
@@ -165,7 +162,7 @@ impl Drop for HidApi {
     fn drop(&mut self) {
         unsafe {
             ffi::hid_exit();
-            hid_api_lock = false;
+            HID_API_LOCK = false;
         }
     }
 }

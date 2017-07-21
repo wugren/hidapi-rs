@@ -1,6 +1,6 @@
 [package]
 name = "hidapi"
-version = "0.4.0"
+version = "0.4.1"
 authors = [
     "Roland Ruckerbauer <roland.rucky@gmail.com>",
     "Osspial <osspial@gmail.com>",
@@ -12,7 +12,7 @@ license = "MIT"
 keywords = ["hid", "api", "usb","binding", "wrapper"]
 build = "build.rs"
 links = "hidapi"
-documentation = "https://beta.docs.rs/hidapi"
+documentation = "https://docs.rs/hidapi"
 
 [dependencies]
 libc = "0.2.15"
