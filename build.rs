@@ -17,7 +17,7 @@
 // along with hidapi_rust.  If not, see <http://www.gnu.org/licenses/>.
 // *************************************************************************
 
-extern crate gcc;
+extern crate cc;
 extern crate pkg_config;
 
 fn main() {
@@ -26,7 +26,7 @@ fn main() {
 
 #[cfg(target_os = "linux")]
 fn compile() {
-    let mut config = gcc::Config::new();
+    let mut config = cc::Build::new();
     config.file("etc/hidapi/libusb/hid.c").include("etc/hidapi/hidapi");
     let lib = pkg_config::find_library("libusb-1.0").expect("Unable to find libusb-1.0");
     for path in lib.include_paths {
@@ -37,7 +37,7 @@ fn compile() {
 
 #[cfg(target_os = "windows")]
 fn compile() {
-    gcc::Config::new()
+    cc::Build::new()
         .file("etc/hidapi/windows/hid.c")
         .include("etc/hidapi/hidapi")
         .compile("libhidapi.a");
@@ -46,7 +46,7 @@ fn compile() {
 
 #[cfg(target_os = "macos")]
 fn compile() {
-    gcc::Config::new()
+    cc::Build::new()
         .file("etc/hidapi/mac/hid.c")
         .include("etc/hidapi/hidapi")
         .compile("libhidapi.a");
