@@ -46,17 +46,49 @@ extern crate libc;
 mod ffi;
 
 use std::ffi::CStr;
-use std::marker::PhantomData;
+use std::rc::Rc;
+use std::mem::ManuallyDrop;
 use libc::{wchar_t, size_t, c_int};
 
 pub type HidError = &'static str;
 pub type HidResult<T> = Result<T, HidError>;
 const STRING_BUF_LEN: usize = 128;
 
+/// Hidapi context and device member, which ensures deinitialization
+/// of the C library happens, when, and only when all devices and the api instance is dropped.
+struct HidApiLock;
+
+impl HidApiLock {
+    fn acquire() -> HidResult<HidApiLock> {
+        if unsafe { !HID_API_LOCK } {
+            // Initialize the HID and prevent other HIDs from being created
+            unsafe {
+                if ffi::hid_init() == -1 {
+                    return Err("Failed to init hidapi");
+                }
+                HID_API_LOCK = true;
+                Ok(HidApiLock)
+            }
+        } else {
+            Err("HidApi already in use")
+        }
+    }
+}
+
+impl Drop for HidApiLock {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::hid_exit();
+            HID_API_LOCK = false;
+        }
+    }
+}
+
 /// Object for handling hidapi context and implementing RAII for it.
 /// Only one instance can exist at a time.
 pub struct HidApi {
     devices: Vec<HidDeviceInfo>,
+    _lock: Rc<HidApiLock>,
 }
 
 static mut HID_API_LOCK: bool = false;
@@ -64,22 +96,13 @@ static mut HID_API_LOCK: bool = false;
 impl HidApi {
     /// Initializes the HID
     pub fn new() -> HidResult<Self> {
-        if unsafe { !HID_API_LOCK } {
+        let lock = HidApiLock::acquire()?;
 
-            // Initialize the HID and prevent other HIDs from being created
-            unsafe {
-                if ffi::hid_init() == -1 {
-                    return Err("Failed to init hid");
-                }
-                HID_API_LOCK = true;
-            }
+        Ok(HidApi {
+            devices: unsafe { HidApi::get_hid_device_info_vector() },
+            _lock: Rc::new(lock),
+        })
 
-
-            Ok(HidApi { devices: unsafe { HidApi::get_hid_device_info_vector() } })
-
-        } else {
-            Err("HidApi already in use")
-        }
     }
 
     /// Refresh devices list and information about them (to access them use
@@ -123,7 +146,7 @@ impl HidApi {
         } else {
             Ok(HidDevice {
                 _hid_device: device,
-                phantom: PhantomData,
+                _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
     }
@@ -137,7 +160,7 @@ impl HidApi {
         } else {
             Ok(HidDevice {
                 _hid_device: device,
-                phantom: PhantomData,
+                _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
     }
@@ -152,17 +175,8 @@ impl HidApi {
         } else {
             Ok(HidDevice {
                 _hid_device: device,
-                phantom: PhantomData,
+                _lock: ManuallyDrop::new(self._lock.clone()),
             })
-        }
-    }
-}
-
-impl Drop for HidApi {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::hid_exit();
-            HID_API_LOCK = false;
         }
     }
 }
@@ -221,19 +235,22 @@ pub struct HidDeviceInfo {
 }
 
 /// Object for accessing HID device
-pub struct HidDevice<'a> {
+pub struct HidDevice {
     _hid_device: *mut ffi::HidDevice,
     /// Prevents this from outliving the api instance that created it
-    phantom: PhantomData<&'a ()>,
+    _lock: ManuallyDrop<Rc<HidApiLock>>,
 }
 
-impl<'a> Drop for HidDevice<'a> {
+impl Drop for HidDevice {
     fn drop(&mut self) {
-        unsafe { ffi::hid_close(self._hid_device) };
+        unsafe {
+            ffi::hid_close(self._hid_device);
+            ManuallyDrop::drop(&mut self._lock);
+        };
     }
 }
 
-impl<'a> HidDevice<'a> {
+impl HidDevice {
     /// Check size returned by other methods, if it's equal to -1 check for
     /// error and return Error, otherwise return size as unsigned number
     fn check_size(&self, res: i32) -> HidResult<usize> {
