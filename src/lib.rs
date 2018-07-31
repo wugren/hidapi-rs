@@ -132,7 +132,9 @@ impl HidApi {
     /// Open a HID device using a Vendor ID (VID), Product ID (PID) and
     /// a serial number.
     pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
-        let device = unsafe { ffi::hid_open(vid, pid, std::mem::transmute(sn.as_ptr())) };
+        let mut chars = sn.chars().map(|c| c as wchar_t).collect::<Vec<_>>();
+        chars.push(0 as wchar_t);
+        let device = unsafe { ffi::hid_open(vid, pid, chars.as_ptr()) };
         if device.is_null() {
             Err("Unable to open hid device")
         } else {
