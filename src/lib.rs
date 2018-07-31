@@ -46,6 +46,7 @@ extern crate libc;
 mod ffi;
 
 use std::ffi::CStr;
+use std::ffi::CString;
 use std::marker::PhantomData;
 use libc::{wchar_t, size_t, c_int};
 
@@ -144,8 +145,8 @@ impl HidApi {
 
     /// The path name be determined by calling hid_enumerate(), or a
     /// platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
-    pub fn open_path(&self, device_path: &str) -> HidResult<HidDevice> {
-        let device = unsafe { ffi::hid_open_path(std::mem::transmute(device_path.as_ptr())) };
+    pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
+        let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
 
         if device.is_null() {
             Err("Unable to open hid device")
@@ -192,7 +193,7 @@ unsafe fn wchar_to_string(wstr: *const wchar_t) -> HidResult<String> {
 /// Convert the CFFI `HidDeviceInfo` struct to a native `HidDeviceInfo` struct
 unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
     HidDeviceInfo {
-        path: std::str::from_utf8(CStr::from_ptr((*src).path).to_bytes()).unwrap().to_owned(),
+        path: CStr::from_ptr((*src).path).to_owned(),
         vendor_id: (*src).vendor_id,
         product_id: (*src).product_id,
         serial_number: wchar_to_string((*src).serial_number).ok(),
@@ -208,7 +209,7 @@ unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidDeviceInfo {
 #[derive(Debug, Clone)]
 /// Storage for device related information
 pub struct HidDeviceInfo {
-    pub path: String,
+    pub path: CString,
     pub vendor_id: u16,
     pub product_id: u16,
     pub serial_number: Option<String>,
