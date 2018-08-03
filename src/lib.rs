@@ -50,12 +50,12 @@ extern crate libc;
 mod error;
 mod ffi;
 
+use failure::Error;
 use libc::{c_int, size_t, wchar_t};
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem::ManuallyDrop;
 use std::rc::Rc;
-use failure::Error;
 
 pub use error::HidError;
 pub type HidResult<T> = Result<T, HidError>;
@@ -139,11 +139,15 @@ impl HidApi {
     }
 
     /// Returns list of objects containing information about connected devices
-    pub fn devices(&self) -> Vec<HidDeviceInfo> {
-        self.devices.clone()
+    pub fn devices(&self) -> &Vec<HidDeviceInfo> {
+        &self.devices
     }
 
-    /// Open a HID device using a Vendor ID (VID) and Product ID (PID)
+    /// Open a HID device using a Vendor ID (VID) and Product ID (PID).
+    ///
+    /// When multiple devices with the same vid and pid are available, then the
+    /// first one found in the internal device list will be used. There are however
+    /// no grantees, which device this will be.
     pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
         let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
 
@@ -173,8 +177,9 @@ impl HidApi {
         }
     }
 
-    /// The path name be determined by calling hid_enumerate(), or a
-    /// platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
+    /// The path name be determined by inspecting the device list available with [HidApi::devices()](struct.HidApi.html#method.devices)
+    ///
+    /// Alternatively a platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
     pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
         let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
 
@@ -246,6 +251,29 @@ pub struct HidDeviceInfo {
     pub interface_number: i32,
 }
 
+impl HidDeviceInfo {
+    /// Use the information contained in `HidDeviceInfo` to open
+    /// and return a handle to a [HidDevice](struct.HidDevice.html).
+    ///
+    /// By default the device path is used to open the device.
+    /// When no path is available, then vid, pid and serial number are used.
+    /// If both path and serial number are not available, then this function will
+    /// fail with [HidError::OpenHidDeviceWithDeviceInfoError](enum.HidError.html#variant.OpenHidDeviceWithDeviceInfoError).
+    ///
+    /// Note, that opening a device could still be done using [HidApi::open()](struct.HidApi.html#method.open) directly.
+    pub fn open_device(&self, hidapi: &HidApi) -> HidResult<HidDevice> {
+        if self.path.as_bytes().len() != 0 {
+            hidapi.open_path(self.path.as_c_str())
+        } else if let Some(ref sn) = self.serial_number {
+            hidapi.open_serial(self.vendor_id, self.product_id, sn)
+        } else {
+            Err(HidError::OpenHidDeviceWithDeviceInfoError {
+                device_info: self.clone(),
+            })
+        }
+    }
+}
+
 /// Object for accessing HID device
 pub struct HidDevice {
     _hid_device: *mut ffi::HidDevice,
@@ -276,13 +304,20 @@ impl HidDevice {
         }
     }
 
-    /// Get a string describing the last error which occurred.
+    /// Get the last error, which happened in the underlying hidapi C library.
+    ///
+    /// The `Ok()` variant of the result will contain a [HidError::HidApiError](enum.HidError.html).
+    ///
+    /// When `Err()` is returned, then acquiring the error string from the hidapi C
+    /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
+    /// be fetched.
     pub fn check_error(&self) -> HidResult<HidError> {
         Ok(HidError::HidApiError {
             message: unsafe {
                 wchar_to_string(ffi::hid_error(self._hid_device))
-                    .map_err(|e| HidError::HidApiErrorEmptyWithCause { cause: Error::from(e).compat() })?
-                    .ok_or(HidError::HidApiErrorEmpty)?
+                    .map_err(|e| HidError::HidApiErrorEmptyWithCause {
+                        cause: Error::from(e).compat(),
+                    })?.ok_or(HidError::HidApiErrorEmpty)?
             },
         })
     }

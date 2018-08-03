@@ -15,7 +15,7 @@ fn main() {
 
     let api = HidApi::new().unwrap();
 
-    for device in &api.devices() {
+    for device in api.devices() {
         println!("{:#?}", device);
     }
 }

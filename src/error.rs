@@ -4,8 +4,9 @@
 // This file is part of hidapi-rs, based on hidapi-rs by Osspial
 // **************************************************************************
 
-use libc::wchar_t;
+use super::HidDeviceInfo;
 use failure::{Compat, Error};
+use libc::wchar_t;
 
 #[derive(Debug, Fail)]
 pub enum HidError {
@@ -37,4 +38,6 @@ pub enum HidError {
     IncompleteSendError { sent: usize, all: usize },
     #[fail(display = "Can not set blocking mode to '{}'", mode)]
     SetBlockingModeError { mode: &'static str },
+    #[fail(display = "Can not open hid device with: {:?}", device_info)]
+    OpenHidDeviceWithDeviceInfoError { device_info: HidDeviceInfo },
 }
