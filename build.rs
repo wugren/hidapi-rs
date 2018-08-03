@@ -24,7 +24,7 @@ fn main() {
     compile();
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(any(feature = "shared-libusb", feature = "shared-hidraw"))))]
 fn compile() {
     let mut config = cc::Build::new();
     config
@@ -38,6 +38,16 @@ fn compile() {
         );
     }
     config.compile("libhidapi.a");
+}
+
+#[cfg(all(target_os = "linux", feature = "shared-libusb", not(feature = "shared-hidraw")))]
+fn compile() {
+    pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
+}
+
+#[cfg(all(target_os = "linux", feature = "shared-hidraw"))]
+fn compile() {
+    pkg_config::probe_library("hidapi-hidraw").expect("Unable to find hidapi-hidraw");
 }
 
 #[cfg(target_os = "windows")]
