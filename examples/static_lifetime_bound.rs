@@ -25,13 +25,16 @@ fn test_lt() -> Rc<HidDevice> {
 
     let devices = api.devices();
 
-    let dev_info = devices.get(0)
+    let dev_info = devices
+        .get(0)
         .expect("There is not a single hid device available");
 
     println!("{:#?}", dev_info);
 
-    let dev = Rc::new(api.open(dev_info.vendor_id, dev_info.product_id)
-        .expect("Can not open device"));
+    let dev = Rc::new(
+        api.open(dev_info.vendor_id, dev_info.product_id)
+            .expect("Can not open device"),
+    );
 
     let dev_1 = dev.clone();
     requires_static_lt_bound(move || {
