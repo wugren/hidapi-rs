@@ -29,7 +29,7 @@ fn main() {
         compile_linux();
     } else if target.contains("windows") {
         compile_windows();
-    } else if target.contains("macos") {
+    } else if target.contains("darwin") {
         compile_macos();
     } else {
         panic!("Unsupported target os for hidapi-rs");
