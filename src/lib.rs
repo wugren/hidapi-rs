@@ -47,7 +47,6 @@ mod ffi;
 
 use std::ffi::CStr;
 use std::ffi::CString;
-use std::marker::PhantomData;
 use std::rc::Rc;
 use std::mem::ManuallyDrop;
 use libc::{wchar_t, size_t, c_int};
