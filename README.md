@@ -9,10 +9,6 @@ This crate provides a rust abstraction over the features of the C library
 This crate is on [crates.io](https://crates.io/crates/hidapi) and can be
 used by adding `hidapi` to the dependencies in your project's `Cargo.toml`.
 
-```toml
-[dependencies]
-hidapi = "0.3"
-```
 # Example
 
 ```rust
