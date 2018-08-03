@@ -18,9 +18,9 @@ fn main() {
             for device in api.devices() {
                 println!("{:#?}", device);
             }
-        },
+        }
         Err(e) => {
             eprintln!("Error: {}", e);
-        },
+        }
     }
 }

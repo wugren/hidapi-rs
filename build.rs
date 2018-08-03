@@ -20,28 +20,93 @@
 extern crate cc;
 extern crate pkg_config;
 
+use std::env;
+
 fn main() {
-    compile();
-}
+    let target = env::var("TARGET").unwrap();
 
-#[cfg(target_os = "linux")]
-fn compile() {
-    let mut config = cc::Build::new();
-    config
-        .file("etc/hidapi/libusb/hid.c")
-        .include("etc/hidapi/hidapi");
-    let lib = pkg_config::find_library("libusb-1.0").expect("Unable to find libusb-1.0");
-    for path in lib.include_paths {
-        config.include(
-            path.to_str()
-                .expect("Failed to convert include path to str"),
-        );
+    if target.contains("linux") {
+        compile_linux();
+    } else if target.contains("windows") {
+        compile_windows();
+    } else if target.contains("darwin") {
+        compile_macos();
+    } else {
+        panic!("Unsupported target os for hidapi-rs");
     }
-    config.compile("libhidapi.a");
 }
 
-#[cfg(target_os = "windows")]
-fn compile() {
+fn compile_linux() {
+    // First check the features enabled for the crate.
+    // Only one linux backend should be enabled at a time.
+
+    let avail_backends: [(&'static str, Box<Fn()>); 4] = [
+        (
+            "LINUX_STATIC_HIDRAW",
+            Box::new(|| {
+                let mut config = cc::Build::new();
+                config
+                    .file("etc/hidapi/linux/hid.c")
+                    .include("etc/hidapi/hidapi");
+                pkg_config::probe_library("libudev").expect("Unable to find libudev");
+                config.compile("libhidapi.a");
+            }),
+        ),
+        (
+            "LINUX_STATIC_LIBUSB",
+            Box::new(|| {
+                let mut config = cc::Build::new();
+                config
+                    .file("etc/hidapi/libusb/hid.c")
+                    .include("etc/hidapi/hidapi");
+                let lib =
+                    pkg_config::find_library("libusb-1.0").expect("Unable to find libusb-1.0");
+                for path in lib.include_paths {
+                    config.include(
+                        path.to_str()
+                            .expect("Failed to convert include path to str"),
+                    );
+                }
+                config.compile("libhidapi.a");
+            }),
+        ),
+        (
+            "LINUX_SHARED_HIDRAW",
+            Box::new(|| {
+                pkg_config::probe_library("hidapi-hidraw").expect("Unable to find hidapi-hidraw");
+            }),
+        ),
+        (
+            "LINUX_SHARED_LIBUSB",
+            Box::new(|| {
+                pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
+            }),
+        ),
+    ];
+
+    let mut backends = avail_backends
+        .iter()
+        .filter(|f| env::var(format!("CARGO_FEATURE_{}", f.0)).is_ok());
+
+    if backends.clone().count() != 1 {
+        panic!("Exactly one linux hidapi backend must be selected.");
+    }
+
+    // Build it!
+    (backends.next().unwrap().1)();
+}
+
+//#[cfg(all(feature = "shared-libusb", not(feature = "shared-hidraw")))]
+//fn compile_linux() {
+//
+//}
+//
+//#[cfg(all(feature = "shared-hidraw"))]
+//fn compile_linux() {
+//
+//}
+
+fn compile_windows() {
     cc::Build::new()
         .file("etc/hidapi/windows/hid.c")
         .include("etc/hidapi/hidapi")
@@ -49,8 +114,7 @@ fn compile() {
     println!("cargo:rustc-link-lib=setupapi");
 }
 
-#[cfg(target_os = "macos")]
-fn compile() {
+fn compile_macos() {
     cc::Build::new()
         .file("etc/hidapi/mac/hid.c")
         .include("etc/hidapi/hidapi")
