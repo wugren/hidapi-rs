@@ -11,11 +11,16 @@ extern crate hidapi;
 use hidapi::HidApi;
 
 fn main() {
-    println!("Printing all available hid devices.");
+    println!("Printing all available hid devices:");
 
-    let api = HidApi::new().unwrap();
-
-    for device in api.devices() {
-        println!("{:#?}", device);
+    match HidApi::new() {
+        Ok(api) => {
+            for device in api.devices() {
+                println!("{:#?}", device);
+            }
+        },
+        Err(e) => {
+            eprintln!("Error: {}", e);
+        },
     }
 }

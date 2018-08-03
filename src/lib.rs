@@ -101,7 +101,9 @@ pub struct HidApi {
 static mut HID_API_LOCK: bool = false;
 
 impl HidApi {
-    /// Initializes the HID
+    /// Initializes the hidapi.
+    ///
+    /// Will also initialize the currently available device list.
     pub fn new() -> HidResult<Self> {
         let lock = HidApiLock::acquire()?;
 
