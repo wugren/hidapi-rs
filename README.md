@@ -1,8 +1,8 @@
-# hidapi [![Build Status](https://travis-ci.org/Osspial/hidapi-rs.svg?branch=master)](https://travis-ci.org/Osspial/hidapi-rs) [![Version](https://img.shields.io/crates/v/hidapi.svg)](https://crates.io/crates/hidapi) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Osspial/hidapi-rs/blob/master/LICENSE.txt) [![Documentation](https://docs.rs/hidapi/badge.svg)](https://docs.rs/hidapi)
+# hidapi [![Build Status](https://travis-ci.org/ruabmbua/hidapi-rs.svg?branch=master)](https://travis-ci.org/ruabmbua/hidapi-rs)
 
 This crate provides a rust abstraction over the features of the C library
 [hidapi](https://github.com/signal11/hidapi) by signal11. Based off of
-[hidapi_rust](https://github.com/ruabmbua/hidapi_rust) by ruabmbua.
+[hidapi-rs](https://github.com/Osspial/hidapi-rs) by Osspial.
 
 # Usage
 
