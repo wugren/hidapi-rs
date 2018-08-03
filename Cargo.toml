@@ -15,9 +15,11 @@ links = "hidapi"
 documentation = "https://docs.rs/hidapi"
 
 [features]
-default = []
-shared-libusb = []
-shared-hidraw = []
+default = ["linux-static-libusb"]
+linux-static-libusb = []
+linux-static-hidraw = []
+linux-shared-libusb = []
+linux-shared-hidraw = []
 
 [dependencies]
 libc = "0.2.33"

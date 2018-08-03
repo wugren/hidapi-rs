@@ -16,12 +16,12 @@
 //!
 //! ```rust,no_run
 //! extern crate hidapi;
-//! 
+//!
 //! use hidapi::HidApi;
-//! 
+//!
 //! fn main() {
 //!     println!("Printing all available hid devices:");
-//! 
+//!
 //!     match HidApi::new() {
 //!         Ok(api) => {
 //!             for device in api.devices() {
