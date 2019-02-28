@@ -1,6 +1,6 @@
 [package]
 name = "hidapi"
-version = "0.5.1"
+version = "0.5.2"
 authors = [
     "Roland Ruckerbauer <roland.rucky@gmail.com>",
     "Osspial <osspial@gmail.com>",
