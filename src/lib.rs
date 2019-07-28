@@ -44,7 +44,7 @@ use libc::{c_int, size_t, wchar_t};
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem::ManuallyDrop;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use error::HidError;
@@ -91,7 +91,7 @@ impl Drop for HidApiLock {
 /// Only one instance can exist at a time.
 pub struct HidApi {
     devices: Vec<HidDeviceInfo>,
-    _lock: Rc<HidApiLock>,
+    _lock: Arc<HidApiLock>,
 }
 
 static HID_API_LOCK: AtomicBool = AtomicBool::new(false);
@@ -105,7 +105,7 @@ impl HidApi {
 
         Ok(HidApi {
             devices: unsafe { HidApi::get_hid_device_info_vector()? },
-            _lock: Rc::new(lock),
+            _lock: Arc::new(lock),
         })
     }
 
@@ -276,8 +276,10 @@ impl HidDeviceInfo {
 pub struct HidDevice {
     _hid_device: *mut ffi::HidDevice,
     /// Prevents this from outliving the api instance that created it
-    _lock: ManuallyDrop<Rc<HidApiLock>>,
+    _lock: ManuallyDrop<Arc<HidApiLock>>,
 }
+
+unsafe impl Send for HidDevice {}
 
 impl Drop for HidDevice {
     fn drop(&mut self) {
