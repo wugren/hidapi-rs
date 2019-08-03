@@ -44,8 +44,8 @@ use libc::{c_int, size_t, wchar_t};
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::mem::ManuallyDrop;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 pub use error::HidError;
 
@@ -266,7 +266,7 @@ impl HidDeviceInfo {
             hidapi.open_serial(self.vendor_id, self.product_id, sn)
         } else {
             Err(HidError::OpenHidDeviceWithDeviceInfoError {
-                device_info: self.clone(),
+                device_info: Box::new(self.clone()),
             })
         }
     }

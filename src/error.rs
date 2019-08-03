@@ -12,7 +12,7 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug)]
 pub enum HidError {
     HidApiError { message: String },
-    HidApiErrorEmptyWithCause { cause: Box<Error + Send + Sync> },
+    HidApiErrorEmptyWithCause { cause: Box<dyn Error + Send + Sync> },
     HidApiErrorEmpty,
     FromWideCharError { wide_char: wchar_t },
     InitializationError,
@@ -20,7 +20,7 @@ pub enum HidError {
     InvalidZeroSizeData,
     IncompleteSendError { sent: usize, all: usize },
     SetBlockingModeError { mode: &'static str },
-    OpenHidDeviceWithDeviceInfoError { device_info: HidDeviceInfo },
+    OpenHidDeviceWithDeviceInfoError { device_info: Box<HidDeviceInfo> },
 }
 
 impl Display for HidError {
@@ -50,14 +50,14 @@ impl Display for HidError {
                 write!(f, "Can not set blocking mode to '{}'", mode)
             }
             HidError::OpenHidDeviceWithDeviceInfoError { device_info } => {
-                write!(f, "Can not open hid device with: {:?}", device_info)
+                write!(f, "Can not open hid device with: {:?}", *device_info)
             }
         }
     }
 }
 
 impl Error for HidError {
-    fn source(&self) -> Option<&(Error + 'static)> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             HidError::HidApiErrorEmptyWithCause { cause } => Some(cause.as_ref()),
             _ => None,
