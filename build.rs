@@ -42,7 +42,7 @@ fn compile_linux() {
     // First check the features enabled for the crate.
     // Only one linux backend should be enabled at a time.
 
-    let avail_backends: [(&'static str, Box<Fn()>); 4] = [
+    let avail_backends: [(&'static str, Box<dyn Fn()>); 4] = [
         (
             "LINUX_STATIC_HIDRAW",
             Box::new(|| {
