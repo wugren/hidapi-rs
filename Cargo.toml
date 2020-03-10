@@ -1,6 +1,6 @@
 [package]
 name = "hidapi"
-version = "1.2.0"
+version = "1.2.1"
 authors = [
     "Roland Ruckerbauer <roland.rucky@gmail.com>",
     "Osspial <osspial@gmail.com>",
@@ -8,7 +8,7 @@ authors = [
 	"mberndt123",
 	"niklasad1"
 ]
-repository = "https://github.com/Osspial/hidapi-rs"
+repository = "https://github.com/ruabmbua/hidapi-rs"
 description = "Rust-y wrapper around hidapi"
 license = "MIT"
 keywords = ["hid", "api", "usb","binding", "wrapper"]
