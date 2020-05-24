@@ -24,8 +24,8 @@
 //!
 //!     match HidApi::new() {
 //!         Ok(api) => {
-//!             for device in api.devices() {
-//!                 println!("{:#?}", device);
+//!             for device in api.device_list() {
+//!                 println!("{:04x}:{:04x}", device.vendor_id(), device.product_id());
 //!             }
 //!         },
 //!         Err(e) => {
@@ -46,6 +46,7 @@ mod ffi;
 use libc::{c_int, size_t, wchar_t};
 use std::ffi::CStr;
 use std::ffi::CString;
+use std::fmt;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -400,6 +401,15 @@ impl DeviceInfo {
                 device_info: Box::new(self.clone().into()),
             })
         }
+    }
+}
+
+impl fmt::Debug for DeviceInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HidDeviceInfo")
+            .field("vendor_id", &self.vendor_id)
+            .field("product_id", &self.product_id)
+            .finish()
     }
 }
 
