@@ -5,7 +5,7 @@
 // *************************************************************************
 
 //! This crate provides a rust abstraction over the features of the C library
-//! hidapi by [signal11](https://github.com/signal11/hidapi).
+//! hidapi by [signal11](https://github.com/libusb/hidapi).
 //!
 //! # Usage
 //!
