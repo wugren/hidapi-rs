@@ -16,6 +16,7 @@ pub enum HidError {
     HidApiErrorEmpty,
     FromWideCharError { wide_char: wchar_t },
     InitializationError,
+    #[deprecated]
     OpenHidDeviceError,
     InvalidZeroSizeData,
     IncompleteSendError { sent: usize, all: usize },

@@ -168,7 +168,10 @@ impl HidApi {
         let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
 
         if device.is_null() {
-            Err(HidError::OpenHidDeviceError)
+            match self.check_error() {
+                Ok(err) => Err(err),
+                Err(e) => Err(e),
+            }
         } else {
             Ok(HidDevice {
                 _hid_device: device,
@@ -184,7 +187,10 @@ impl HidApi {
         chars.push(0 as wchar_t);
         let device = unsafe { ffi::hid_open(vid, pid, chars.as_ptr()) };
         if device.is_null() {
-            Err(HidError::OpenHidDeviceError)
+            match self.check_error() {
+                Ok(err) => Err(err),
+                Err(e) => Err(e),
+            }
         } else {
             Ok(HidDevice {
                 _hid_device: device,
@@ -200,13 +206,35 @@ impl HidApi {
         let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
 
         if device.is_null() {
-            Err(HidError::OpenHidDeviceError)
+            match self.check_error() {
+                Ok(err) => Err(err),
+                Err(e) => Err(e),
+            }
         } else {
             Ok(HidDevice {
                 _hid_device: device,
                 _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
+    }
+
+    /// Get the last non-device specific error, which happened in the underlying hidapi C library.
+    /// To get the last device specific error, use [`HidDevice::check_error`].
+    ///
+    /// The `Ok()` variant of the result will contain a [HidError::HidApiError](enum.HidError.html).
+    ///
+    /// When `Err()` is returned, then acquiring the error string from the hidapi C
+    /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
+    /// be fetched.
+    pub fn check_error(&self) -> HidResult<HidError> {
+        Ok(HidError::HidApiError {
+            message: unsafe {
+                match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
+                    WcharString::String(s) => s,
+                    _ => return Err(HidError::HidApiErrorEmpty),
+                }
+            },
+        })
     }
 }
 
