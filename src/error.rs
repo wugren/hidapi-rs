@@ -12,6 +12,7 @@ use std::fmt::{Display, Formatter, Result};
 #[derive(Debug)]
 pub enum HidError {
     HidApiError { message: String },
+    #[deprecated]
     HidApiErrorEmptyWithCause { cause: Box<dyn Error + Send + Sync> },
     HidApiErrorEmpty,
     FromWideCharError { wide_char: wchar_t },
