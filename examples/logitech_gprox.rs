@@ -10,14 +10,11 @@ use hidapi::HidApi;
 use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut vol: u8 = std::env::args()
+    let vol = std::env::args()
         .nth(1)
-        .map(|arg| arg.parse())
-        .ok_or("missing sidechannel volume arg")??;
-
-    if vol > 100 {
-        vol = 100;
-    }
+        .map(|arg| arg.parse::<u8>())
+        .ok_or("missing sidechannel volume arg")??
+        .min(100);
 
     let api = HidApi::new()?;
     let dev = api.open(0x046d, 0x0aaa)?;
