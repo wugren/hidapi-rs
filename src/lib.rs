@@ -70,6 +70,12 @@ impl HidApiLock {
         {
             // Initialize the HID and prevent other HIDs from being created
             unsafe {
+                #[cfg(target_os = "openbsd")]
+                if ffi::hidapi_hid_init() == -1 {
+                    HID_API_LOCK.store(false, Ordering::SeqCst);
+                    return Err(HidError::InitializationError);
+                }
+                #[cfg(not(target_os = "openbsd"))]
                 if ffi::hid_init() == -1 {
                     HID_API_LOCK.store(false, Ordering::SeqCst);
                     return Err(HidError::InitializationError);

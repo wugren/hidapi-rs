@@ -33,7 +33,9 @@ fn main() {
         compile_macos();
     } else if target.contains("freebsd") {
         compile_freebsd();
-    } else if target.contains("illumos") {
+    } else if target.contains("openbsd") {
+        compile_openbsd();
+     } else if target.contains("illumos") {
         compile_illumos();
     } else {
         panic!("Unsupported target os for hidapi-rs");
@@ -112,6 +114,10 @@ fn compile_linux() {
 
 fn compile_freebsd() {
     pkg_config::probe_library("hidapi").expect("Unable to find hidapi");
+}
+
+fn compile_openbsd() {
+    pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi");
 }
 
 fn compile_illumos() {
