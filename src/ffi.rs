@@ -25,6 +25,7 @@ pub struct HidDeviceInfo {
 
 #[allow(dead_code)]
 extern "C" {
+    #[cfg_attr(target_os = "openbsd", link_name = "hidapi_hid_init")]
     pub fn hid_init() -> c_int;
     pub fn hid_exit() -> c_int;
     pub fn hid_enumerate(vendor_id: c_ushort, product_id: c_ushort) -> *mut HidDeviceInfo;
