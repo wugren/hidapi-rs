@@ -91,6 +91,44 @@ impl Drop for HidApiLock {
     }
 }
 
+/// Open a HID device using libusb_wrap_sys_device.
+/// This cannot use HdiApi because new() is failed.
+pub fn wrap_sys_device(sys_dev: isize, interface_num: i32) -> HidResult<HidDevice> {
+    if cfg!(not(any(
+        feature = "linux-static-libusb",
+        feature = "linux-shared-libusb"
+    ))) {
+        return Err(HidError::HidApiError {
+            message: String::from("wrap_sys_device is not implement"),
+        });
+    }
+
+    println!("{}, {}", sys_dev, interface_num);
+    let device = unsafe { 
+        ffi::libusb_set_option(std::ptr::null_mut(), 2);
+        ffi::hid_libusb_wrap_sys_device(sys_dev, interface_num) 
+    };
+
+    if device.is_null() {
+        println!("device null");
+        let e = Err(HidError::HidApiError {
+            message: unsafe {
+                match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
+                    WcharString::String(s) => s,
+                    _ => return Err(HidError::HidApiErrorEmpty),
+                }
+            },
+        });
+        return e;
+    }
+    let lock = HidApiLock::acquire()?;
+
+    Ok(HidDevice {
+        _hid_device: device,
+        _lock: ManuallyDrop::new(Arc::new(lock)),
+    })
+}
+
 /// Object for handling hidapi context and implementing RAII for it.
 /// Only one instance can exist at a time.
 pub struct HidApi {
