@@ -103,7 +103,6 @@ pub fn wrap_sys_device(sys_dev: isize, interface_num: i32) -> HidResult<HidDevic
         });
     }
 
-    println!("{}, {}", sys_dev, interface_num);
     let device = unsafe { 
         ffi::libusb_set_option(std::ptr::null_mut(), 2);
         ffi::hid_libusb_wrap_sys_device(sys_dev, interface_num) 
