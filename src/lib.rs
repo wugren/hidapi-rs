@@ -90,6 +90,7 @@ impl Drop for HidApiLock {
         HID_API_LOCK.store(false, Ordering::SeqCst);
     }
 }
+
 /// Object for handling hidapi context and implementing RAII for it.
 /// Only one instance can exist at a time.
 pub struct HidApi {
