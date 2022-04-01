@@ -90,44 +90,6 @@ impl Drop for HidApiLock {
         HID_API_LOCK.store(false, Ordering::SeqCst);
     }
 }
-
-/// Open a HID device using libusb_wrap_sys_device.
-/// This cannot use HdiApi because new() is failed.
-pub fn wrap_sys_device(sys_dev: isize, interface_num: i32) -> HidResult<HidDevice> {
-    if cfg!(not(any(
-        feature = "linux-static-libusb",
-        feature = "linux-shared-libusb"
-    ))) {
-        return Err(HidError::HidApiError {
-            message: String::from("wrap_sys_device is not implement"),
-        });
-    }
-
-    let device = unsafe { 
-        ffi::libusb_set_option(std::ptr::null_mut(), 2);
-        ffi::hid_libusb_wrap_sys_device(sys_dev, interface_num) 
-    };
-
-    if device.is_null() {
-        println!("device null");
-        let e = Err(HidError::HidApiError {
-            message: unsafe {
-                match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
-                    WcharString::String(s) => s,
-                    _ => return Err(HidError::HidApiErrorEmpty),
-                }
-            },
-        });
-        return e;
-    }
-    let lock = HidApiLock::acquire()?;
-
-    Ok(HidDevice {
-        _hid_device: device,
-        _lock: ManuallyDrop::new(Arc::new(lock)),
-    })
-}
-
 /// Object for handling hidapi context and implementing RAII for it.
 /// Only one instance can exist at a time.
 pub struct HidApi {
@@ -153,6 +115,26 @@ impl HidApi {
             _lock: Arc::new(lock),
         })
     }
+
+    /// Initializes the hidapi.
+    /// it skips device scanning.
+    pub fn new_without_enumerate() ->HidResult<Self> {
+        unsafe {
+            //Do not scan for devices in libusb_init()
+            //Must be set before calling it.
+            //This is needed on Android, 
+            //where access to USB devices is limited
+            ffi::libusb_set_option(std::ptr::null_mut(), 2);
+        }
+        let lock = HidApiLock::acquire()?;
+        Ok(HidApi {
+            device_list: Vec::new(),
+            devices: Vec::new(),
+            _lock: Arc::new(lock),
+        })
+    }
+
+
 
     /// Refresh devices list and information about them (to access them use
     /// `device_list()` method)
@@ -254,6 +236,40 @@ impl HidApi {
             })
         }
     }
+
+    /// Open a HID device using libusb_wrap_sys_device.
+    pub fn wrap_sys_device(&self, sys_dev: isize, interface_num: i32) -> HidResult<HidDevice> {
+        if cfg!(not(any(
+            feature = "linux-static-libusb",
+            feature = "linux-shared-libusb"
+        ))) {
+            return Err(HidError::HidApiError {
+                message: String::from("wrap_sys_device is not implement"),
+            });
+        }
+
+        let device = unsafe {
+            ffi::hid_libusb_wrap_sys_device(sys_dev, interface_num)
+        };
+
+        if device.is_null() {
+            let e = Err(HidError::HidApiError {
+                message: unsafe {
+                    match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
+                        WcharString::String(s) => s,
+                        _ => return Err(HidError::HidApiErrorEmpty),
+                    }
+                },
+            });
+            return e;
+        }
+
+        Ok(HidDevice {
+            _hid_device: device,
+            _lock: ManuallyDrop::new(self._lock.clone()),
+        })
+    }
+
 
     /// Get the last non-device specific error, which happened in the underlying hidapi C library.
     /// To get the last device specific error, use [`HidDevice::check_error`].
