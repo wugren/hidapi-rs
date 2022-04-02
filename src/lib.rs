@@ -259,21 +259,16 @@ impl HidApi {
         };
 
         if device.is_null() {
-            let e = Err(HidError::HidApiError {
-                message: unsafe {
-                    match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
-                        WcharString::String(s) => s,
-                        _ => return Err(HidError::HidApiErrorEmpty),
-                    }
-                },
-            });
-            return e;
+            match self.check_error() {
+                Ok(err) => Err(err),
+                Err(e) => Err(e),
+            }
+        } else {
+            Ok(HidDevice {
+                _hid_device: device,
+                _lock: ManuallyDrop::new(self._lock.clone()),
+            })
         }
-
-        Ok(HidDevice {
-            _hid_device: device,
-            _lock: ManuallyDrop::new(self._lock.clone()),
-        })
     }
 
 
