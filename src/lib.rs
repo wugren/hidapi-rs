@@ -120,12 +120,17 @@ impl HidApi {
     /// Initializes the hidapi.
     /// it skips device scanning.
     pub fn new_without_enumerate() ->HidResult<Self> {
-        unsafe {
-            //Do not scan for devices in libusb_init()
-            //Must be set before calling it.
-            //This is needed on Android, 
-            //where access to USB devices is limited
-            ffi::libusb_set_option(std::ptr::null_mut(), 2);
+        if cfg!(any(
+            feature = "linux-static-libusb",
+            feature = "linux-shared-libusb"
+        )) {
+            unsafe {
+                //Do not scan for devices in libusb_init()
+                //Must be set before calling it.
+                //This is needed on Android,
+                //where access to USB devices is limited
+                ffi::libusb_set_option(std::ptr::null_mut(), 2);
+            }
         }
         let lock = HidApiLock::acquire()?;
         Ok(HidApi {
