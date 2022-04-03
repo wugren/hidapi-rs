@@ -7,7 +7,7 @@
 use libc::{c_char, c_int, c_uchar, c_ushort, c_void, intptr_t, size_t, wchar_t};
 
 #[macro_export]
-macro_rules! env_libusb_only {
+macro_rules! cfg_libusb_only {
     ($i: block) => {
         #[cfg(any(
             feature = "linux-static-libusb",
@@ -63,10 +63,10 @@ extern "C" {
         serial_number: *const wchar_t,
     ) -> *mut HidDevice;
     pub fn hid_open_path(path: *const c_char) -> *mut HidDevice;
-    env_libusb_only! {
+    cfg_libusb_only! {
     pub fn hid_libusb_wrap_sys_device(sys_dev: intptr_t, interface_num: c_int) -> *mut HidDevice;
     }
-    env_libusb_only! {
+    cfg_libusb_only! {
     pub fn libusb_set_option(ctx: *mut LibusbContext, option: c_int);
     }
     pub fn hid_write(device: *mut HidDevice, data: *const c_uchar, length: size_t) -> c_int;

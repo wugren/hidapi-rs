@@ -120,15 +120,15 @@ impl HidApi {
     /// Initializes the hidapi.
     /// it skips device scanning.
     pub fn new_without_enumerate() -> HidResult<Self> {
-        unsafe {
-            //Do not scan for devices in libusb_init()
-            //Must be set before calling it.
-            //This is needed on Android,
-            //where access to USB devices is limited
-            env_libusb_only! {{
+        // Do not scan for devices in libusb_init()
+        // Must be set before calling it.
+        // This is needed on Android, where access to USB devices is limited
+        cfg_libusb_only! {{
+            unsafe {
                 ffi::libusb_set_option(std::ptr::null_mut(), 2);
-            }}
-        }
+            }
+        }}
+
         let lock = HidApiLock::acquire()?;
         Ok(HidApi {
             device_list: Vec::new(),
@@ -238,7 +238,7 @@ impl HidApi {
         }
     }
 
-    env_libusb_only! {
+    cfg_libusb_only! {
     /// Open a HID device using libusb_wrap_sys_device.
     pub fn wrap_sys_device(&self, sys_dev: isize, interface_num: i32) -> HidResult<HidDevice> {
         let device = unsafe {
@@ -656,7 +656,7 @@ impl HidDevice {
 
     /// Set the first byte of `buf` to the 'Report ID' of the report to be read.
     /// Upon return, the first byte will still contain the Report ID, and the
-    /// report data will start in buf[1].
+    /// report data will start in `buf[1]`.
     pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
         let res = unsafe {
             ffi::hid_get_feature_report(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t)
