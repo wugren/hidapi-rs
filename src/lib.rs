@@ -117,6 +117,28 @@ impl HidApi {
         })
     }
 
+    /// Initializes the hidapi.
+    /// it skips device scanning.
+    pub fn new_without_enumerate() ->HidResult<Self> {
+            unsafe {
+                //Do not scan for devices in libusb_init()
+                //Must be set before calling it.
+                //This is needed on Android,
+                //where access to USB devices is limited
+            env_libusb_only! {{
+                ffi::libusb_set_option(std::ptr::null_mut(), 2);
+            }}
+        }
+        let lock = HidApiLock::acquire()?;
+        Ok(HidApi {
+            device_list: Vec::new(),
+            devices: Vec::new(),
+            _lock: Arc::new(lock),
+        })
+    }
+
+
+
     /// Refresh devices list and information about them (to access them use
     /// `device_list()` method)
     pub fn refresh_devices(&mut self) -> HidResult<()> {
@@ -217,6 +239,28 @@ impl HidApi {
             })
         }
     }
+
+    env_libusb_only! {
+    /// Open a HID device using libusb_wrap_sys_device.
+    pub fn wrap_sys_device(&self, sys_dev: isize, interface_num: i32) -> HidResult<HidDevice> {
+        let device = unsafe {
+            ffi::hid_libusb_wrap_sys_device(sys_dev, interface_num)
+        };
+
+        if device.is_null() {
+            match self.check_error() {
+                Ok(err) => Err(err),
+                Err(e) => Err(e),
+            }
+        } else {
+            Ok(HidDevice {
+                _hid_device: device,
+                _lock: ManuallyDrop::new(self._lock.clone()),
+            })
+        }
+    }
+    }
+
 
     /// Get the last non-device specific error, which happened in the underlying hidapi C library.
     /// To get the last device specific error, use [`HidDevice::check_error`].
