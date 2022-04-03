@@ -35,7 +35,7 @@ fn main() {
         compile_freebsd();
     } else if target.contains("openbsd") {
         compile_openbsd();
-     } else if target.contains("illumos") {
+    } else if target.contains("illumos") {
         compile_illumos();
     } else {
         panic!("Unsupported target os for hidapi-rs");
@@ -167,8 +167,7 @@ fn compile_windows() {
     let linkage = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or(String::new());
 
     let mut cc = cc::Build::new();
-    cc
-        .file("etc/hidapi/windows/hid.c")
+    cc.file("etc/hidapi/windows/hid.c")
         .include("etc/hidapi/hidapi");
 
     if linkage.contains("crt-static") {

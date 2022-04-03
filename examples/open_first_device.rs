@@ -21,7 +21,11 @@ fn main() {
             .expect("No devices are available!")
             .clone();
 
-        println!("Opening device:\n VID: {:04x}, PID: {:04x}\n", device_info.vendor_id(), device_info.product_id());
+        println!(
+            "Opening device:\n VID: {:04x}, PID: {:04x}\n",
+            device_info.vendor_id(),
+            device_info.product_id()
+        );
 
         let device = device_info.open_device(&hidapi)?;
 

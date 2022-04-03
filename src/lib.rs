@@ -119,12 +119,12 @@ impl HidApi {
 
     /// Initializes the hidapi.
     /// it skips device scanning.
-    pub fn new_without_enumerate() ->HidResult<Self> {
-            unsafe {
-                //Do not scan for devices in libusb_init()
-                //Must be set before calling it.
-                //This is needed on Android,
-                //where access to USB devices is limited
+    pub fn new_without_enumerate() -> HidResult<Self> {
+        unsafe {
+            //Do not scan for devices in libusb_init()
+            //Must be set before calling it.
+            //This is needed on Android,
+            //where access to USB devices is limited
             env_libusb_only! {{
                 ffi::libusb_set_option(std::ptr::null_mut(), 2);
             }}
@@ -136,8 +136,6 @@ impl HidApi {
             _lock: Arc::new(lock),
         })
     }
-
-
 
     /// Refresh devices list and information about them (to access them use
     /// `device_list()` method)
@@ -260,7 +258,6 @@ impl HidApi {
         }
     }
     }
-
 
     /// Get the last non-device specific error, which happened in the underlying hidapi C library.
     /// To get the last device specific error, use [`HidDevice::check_error`].

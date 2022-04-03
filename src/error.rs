@@ -11,18 +11,31 @@ use std::fmt::{Display, Formatter, Result};
 
 #[derive(Debug)]
 pub enum HidError {
-    HidApiError { message: String },
+    HidApiError {
+        message: String,
+    },
     #[deprecated]
-    HidApiErrorEmptyWithCause { cause: Box<dyn Error + Send + Sync> },
+    HidApiErrorEmptyWithCause {
+        cause: Box<dyn Error + Send + Sync>,
+    },
     HidApiErrorEmpty,
-    FromWideCharError { wide_char: wchar_t },
+    FromWideCharError {
+        wide_char: wchar_t,
+    },
     InitializationError,
     #[deprecated]
     OpenHidDeviceError,
     InvalidZeroSizeData,
-    IncompleteSendError { sent: usize, all: usize },
-    SetBlockingModeError { mode: &'static str },
-    OpenHidDeviceWithDeviceInfoError { device_info: Box<HidDeviceInfo> },
+    IncompleteSendError {
+        sent: usize,
+        all: usize,
+    },
+    SetBlockingModeError {
+        mode: &'static str,
+    },
+    OpenHidDeviceWithDeviceInfoError {
+        device_info: Box<HidDeviceInfo>,
+    },
 }
 
 impl Display for HidError {
