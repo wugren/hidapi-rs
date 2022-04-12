@@ -10,10 +10,14 @@ use libc::{c_char, c_int, c_uchar, c_ushort, c_void, intptr_t, size_t, wchar_t};
 macro_rules! cfg_libusb_only {
     ($i: block) => {
         #[cfg(any(
-            feature = "linux-static-libusb",
-            feature = "linux-shared-libusb",
-            feature = "illumos-static-libusb",
-            feature = "illumos-shared-libusb",
+            all(
+                target_os = "linux",
+                any(feature = "linux-static-libusb", feature = "linux-shared-libusb",)
+            ),
+            all(
+                target_os = "illumos",
+                any(feature = "illumos-static-libusb", feature = "illumos-shared-libusb",)
+            ),
             target_os = "freebsd",
             target_os = "openbsd"
         ))]
@@ -21,10 +25,14 @@ macro_rules! cfg_libusb_only {
     };
     ($i: item) => {
         #[cfg(any(
-            feature = "linux-static-libusb",
-            feature = "linux-shared-libusb",
-            feature = "illumos-static-libusb",
-            feature = "illumos-shared-libusb",
+            all(
+                target_os = "linux",
+                any(feature = "linux-static-libusb", feature = "linux-shared-libusb",)
+            ),
+            all(
+                target_os = "illumos",
+                any(feature = "illumos-static-libusb", feature = "illumos-shared-libusb",)
+            ),
             target_os = "freebsd",
             target_os = "openbsd"
         ))]
