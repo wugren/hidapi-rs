@@ -120,3 +120,31 @@ extern "C" {
     ) -> c_int;
     pub fn hid_error(device: *mut HidDevice) -> *const wchar_t;
 }
+
+// For documentation look at the corresponding C header file hidapi_darwin.h
+#[cfg(target_os = "macos")]
+pub mod macos {
+    use super::*;
+
+    extern "C" {
+        pub fn hid_darwin_get_location_id(device: *mut HidDevice, location_id: *mut u32) -> c_int;
+        pub fn hid_darwin_set_open_exclusive(open_exclusive: c_int);
+        pub fn hid_darwin_get_open_exclusive() -> c_int;
+        pub fn hid_darwin_is_device_open_exclusive(device: *mut HidDevice) -> c_int;
+    }
+}
+
+// For documentation look at the corresponding C header file hidapi_winapi.h
+#[cfg(target_os = "windows")]
+pub mod windows {
+    use winapi::shared::guiddef::GUID;
+
+    use super::*;
+    extern "C" {
+        pub fn hid_winapi_get_container_id(
+            device: *mut HidDevice,
+            container_id: *mut GUID,
+        ) -> c_int;
+
+    }
+}

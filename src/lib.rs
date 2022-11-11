@@ -35,13 +35,21 @@
 //! }
 //! ```
 
-// Allow use of deprecated items, we defined ourselfes...
+// Allow use of deprecated items, we defined ourselves...
 #![allow(deprecated)]
 
 extern crate libc;
 
+#[cfg(target_os = "windows")]
+extern crate winapi;
+
 mod error;
 mod ffi;
+
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 
 use libc::{c_int, size_t, wchar_t};
 use std::ffi::CStr;
@@ -75,6 +83,7 @@ impl HidApiLock {
                     HID_API_LOCK.store(false, Ordering::SeqCst);
                     return Err(HidError::InitializationError);
                 }
+
                 Ok(HidApiLock)
             }
         } else {
