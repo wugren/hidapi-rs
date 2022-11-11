@@ -164,7 +164,7 @@ fn compile_illumos() {
 }
 
 fn compile_windows() {
-    let linkage = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or(String::new());
+    let linkage = env::var("CARGO_CFG_TARGET_FEATURE").unwrap_or_default();
 
     let mut cc = cc::Build::new();
     cc.file("etc/hidapi/windows/hid.c")

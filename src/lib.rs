@@ -492,9 +492,9 @@ impl DeviceInfo {
     ///
     /// Note, that opening a device could still be done using [HidApi::open()](struct.HidApi.html#method.open) directly.
     pub fn open_device(&self, hidapi: &HidApi) -> HidResult<HidDevice> {
-        if self.path.as_bytes().len() != 0 {
+        if !self.path.as_bytes().is_empty() {
             hidapi.open_path(self.path.as_c_str())
-        } else if let Some(ref sn) = self.serial_number() {
+        } else if let Some(sn) = self.serial_number() {
             hidapi.open_serial(self.vendor_id, self.product_id, sn)
         } else {
             Err(HidError::OpenHidDeviceWithDeviceInfoError {
@@ -550,7 +550,7 @@ impl HidDeviceInfo {
     ///
     /// Note, that opening a device could still be done using [HidApi::open()](struct.HidApi.html#method.open) directly.
     pub fn open_device(&self, hidapi: &HidApi) -> HidResult<HidDevice> {
-        if self.path.as_bytes().len() != 0 {
+        if !self.path.as_bytes().is_empty() {
             hidapi.open_path(self.path.as_c_str())
         } else if let Some(ref sn) = self.serial_number {
             hidapi.open_serial(self.vendor_id, self.product_id, sn)
@@ -631,7 +631,7 @@ impl HidDevice {
     /// one exists. If it does not, it will send the data through
     /// the Control Endpoint (Endpoint 0).
     pub fn write(&self, data: &[u8]) -> HidResult<usize> {
-        if data.len() == 0 {
+        if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
         let res = unsafe { ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t) };
@@ -674,7 +674,7 @@ impl HidDevice {
     /// do not use numbered reports), followed by the report data (16 bytes).
     /// In this example, the length passed in would be 17.
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
-        if data.len() == 0 {
+        if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
         let res = unsafe {
