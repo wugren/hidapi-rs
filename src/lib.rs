@@ -47,6 +47,7 @@ use libc::{c_int, size_t, wchar_t};
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
+use std::fmt::Debug;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -539,6 +540,12 @@ pub struct HidDevice {
 }
 
 unsafe impl Send for HidDevice {}
+
+impl Debug for HidDevice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HidDevice").finish()
+    }
+}
 
 impl Drop for HidDevice {
     fn drop(&mut self) {
