@@ -6,8 +6,6 @@ use crate::ffi;
 use crate::{HidDevice, HidResult};
 
 impl HidDevice {
-    /// **`Only available on Windows`**
-    ///
     /// Get the container ID for a HID device.
     ///
     /// This function returns the `DEVPKEY_Device_ContainerId` property of the

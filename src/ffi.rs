@@ -6,6 +6,7 @@
 // For documentation look at the corresponding C header file hidapi.h
 use libc::{c_char, c_int, c_uchar, c_ushort, c_void, intptr_t, size_t, wchar_t};
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! cfg_libusb_only {
     ($i: block) => {

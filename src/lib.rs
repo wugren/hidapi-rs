@@ -63,8 +63,10 @@ mod error;
 mod ffi;
 
 #[cfg(target_os = "macos")]
+#[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
 mod macos;
 #[cfg(target_os = "windows")]
+#[cfg_attr(docsrs, doc(cfg(target_os = "windows")))]
 mod windows;
 
 use libc::{c_int, size_t, wchar_t};
