@@ -5,13 +5,14 @@ authors = [
     "Roland Ruckerbauer <roland.rucky@gmail.com>",
     "Osspial <osspial@gmail.com>",
     "Artyom Pavlov <newpavlov@gmail.com>",
-	"mberndt123",
-	"niklasad1"
+    "mberndt123",
+    "niklasad1",
+    "Stefan Kerkmann"
 ]
 repository = "https://github.com/ruabmbua/hidapi-rs"
 description = "Rust-y wrapper around hidapi"
 license = "MIT"
-keywords = ["hid", "api", "usb","binding", "wrapper"]
+keywords = ["hid", "api", "usb", "binding", "wrapper"]
 build = "build.rs"
 links = "hidapi"
 documentation = "https://docs.rs/hidapi"
@@ -24,10 +25,17 @@ linux-shared-libusb = []
 linux-shared-hidraw = []
 illumos-static-libusb = []
 illumos-shared-libusb = []
+macos-shared-device = []
 
 [dependencies]
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+winapi = "0.3.9"
+
 [build-dependencies]
 cc = "1.0"
 pkg-config = "0.3"
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]

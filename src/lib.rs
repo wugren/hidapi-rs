@@ -34,19 +34,46 @@
 //!     }
 //! }
 //! ```
+//!
+//! # Feature flags
+//!
+//! - `linux-static-libusb`: uses statically linked `libusb` backend on Linux (default)
+//! - `linux-static-hidraw`: uses statically linked `hidraw` backend on Linux
+//! - `linux-shared-libusb`: uses dynamically linked `libusb` backend on Linux
+//! - `linux-shared-hidraw`: uses dynamically linked `hidraw` backend on Linux
+//! - `illumos-static-libusb`: uses statically linked `libusb` backend on Illumos (default)
+//! - `illumos-shared-libusb`: uses statically linked `hidraw` backend on Illumos
+//! - `macos-shared-device`: enables shared access to HID devices on MacOS
+//!
+//! ## MacOS Shared device access
+//!
+//! Since `hidapi` 0.12 it is possible to open MacOS devices with shared access, so that multiple
+//! [`HidDevice`] handles can access the same physical device. For backward compatibility this is
+//! an opt-in that can be enabled with the `macos-shared-device` feature flag.
 
-// Allow use of deprecated items, we defined ourselfes...
+// Allow use of deprecated items, we defined ourselves...
 #![allow(deprecated)]
 
 extern crate libc;
 
+#[cfg(target_os = "windows")]
+extern crate winapi;
+
 mod error;
 mod ffi;
+
+#[cfg(target_os = "macos")]
+#[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
+mod macos;
+#[cfg(target_os = "windows")]
+#[cfg_attr(docsrs, doc(cfg(target_os = "windows")))]
+mod windows;
 
 use libc::{c_int, size_t, wchar_t};
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
+use std::fmt::Debug;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -74,6 +101,12 @@ impl HidApiLock {
                     HID_API_LOCK.store(false, Ordering::SeqCst);
                     return Err(HidError::InitializationError);
                 }
+
+                #[cfg(all(target_os = "macos", feature = "macos-shared-device"))]
+                {
+                    unsafe { ffi::macos::hid_darwin_set_open_exclusive(0) }
+                }
+
                 Ok(HidApiLock)
             }
         } else {
@@ -461,9 +494,9 @@ impl DeviceInfo {
     ///
     /// Note, that opening a device could still be done using [HidApi::open()](struct.HidApi.html#method.open) directly.
     pub fn open_device(&self, hidapi: &HidApi) -> HidResult<HidDevice> {
-        if self.path.as_bytes().len() != 0 {
+        if !self.path.as_bytes().is_empty() {
             hidapi.open_path(self.path.as_c_str())
-        } else if let Some(ref sn) = self.serial_number() {
+        } else if let Some(sn) = self.serial_number() {
             hidapi.open_serial(self.vendor_id, self.product_id, sn)
         } else {
             Err(HidError::OpenHidDeviceWithDeviceInfoError {
@@ -519,7 +552,7 @@ impl HidDeviceInfo {
     ///
     /// Note, that opening a device could still be done using [HidApi::open()](struct.HidApi.html#method.open) directly.
     pub fn open_device(&self, hidapi: &HidApi) -> HidResult<HidDevice> {
-        if self.path.as_bytes().len() != 0 {
+        if !self.path.as_bytes().is_empty() {
             hidapi.open_path(self.path.as_c_str())
         } else if let Some(ref sn) = self.serial_number {
             hidapi.open_serial(self.vendor_id, self.product_id, sn)
@@ -539,6 +572,12 @@ pub struct HidDevice {
 }
 
 unsafe impl Send for HidDevice {}
+
+impl Debug for HidDevice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HidDevice").finish()
+    }
+}
 
 impl Drop for HidDevice {
     fn drop(&mut self) {
@@ -594,7 +633,7 @@ impl HidDevice {
     /// one exists. If it does not, it will send the data through
     /// the Control Endpoint (Endpoint 0).
     pub fn write(&self, data: &[u8]) -> HidResult<usize> {
-        if data.len() == 0 {
+        if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
         let res = unsafe { ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t) };
@@ -637,7 +676,7 @@ impl HidDevice {
     /// do not use numbered reports), followed by the report data (16 bytes).
     /// In this example, the length passed in would be 17.
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
-        if data.len() == 0 {
+        if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
         let res = unsafe {
