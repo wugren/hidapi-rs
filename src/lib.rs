@@ -56,9 +56,6 @@
 //! [`HidDevice`] handles can access the same physical device. For backward compatibility this is
 //! an opt-in that can be enabled with the `macos-shared-device` feature flag.
 
-// Allow use of deprecated items, we defined ourselves...
-#![allow(deprecated)]
-
 extern crate libc;
 
 #[cfg(target_os = "windows")]
@@ -97,9 +94,17 @@ impl HidApiLock {
     fn acquire() -> HidResult<HidApiLock> {
         const EXPECTED_CURRENT: bool = false;
 
-        if EXPECTED_CURRENT
-            == HID_API_LOCK.compare_and_swap(EXPECTED_CURRENT, true, Ordering::SeqCst)
-        {
+        let previous = match HID_API_LOCK.compare_exchange(
+            EXPECTED_CURRENT,
+            true,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(x) => x,
+            Err(x) => x,
+        };
+
+        if EXPECTED_CURRENT == previous {
             // Initialize the HID and prevent other HIDs from being created
             unsafe {
                 if ffi::hid_init() == -1 {
@@ -132,7 +137,6 @@ impl Drop for HidApiLock {
 /// Object for handling hidapi context and implementing RAII for it.
 /// Only one instance can exist at a time.
 pub struct HidApi {
-    devices: Vec<HidDeviceInfo>, /* Deprecated */
     device_list: Vec<DeviceInfo>,
     _lock: Arc<HidApiLock>,
 }
@@ -150,7 +154,6 @@ impl HidApi {
 
         Ok(HidApi {
             device_list: device_list.clone(),
-            devices: device_list.into_iter().map(|d| d.into()).collect(),
             _lock: Arc::new(lock),
         })
     }
@@ -170,7 +173,6 @@ impl HidApi {
         let lock = HidApiLock::acquire()?;
         Ok(HidApi {
             device_list: Vec::new(),
-            devices: Vec::new(),
             _lock: Arc::new(lock),
         })
     }
@@ -180,7 +182,6 @@ impl HidApi {
     pub fn refresh_devices(&mut self) -> HidResult<()> {
         let device_list = unsafe { HidApi::get_hid_device_info_vector()? };
         self.device_list = device_list.clone();
-        self.devices = device_list.into_iter().map(|d| d.into()).collect();
         Ok(())
     }
 
@@ -202,14 +203,6 @@ impl HidApi {
         }
 
         Ok(device_vector)
-    }
-
-    /// Returns vec of objects containing information about connected devices
-    ///
-    /// Deprecated. Use `HidApi::device_list()` instead.
-    #[deprecated]
-    pub fn devices(&self) -> &Vec<HidDeviceInfo> {
-        &self.devices
     }
 
     /// Returns iterator containing information about attached HID devices.
@@ -385,24 +378,6 @@ impl Into<Option<String>> for WcharString {
     }
 }
 
-/// Storage for device related information
-///
-/// Deprecated. Use `HidApi::device_list()` instead.
-#[derive(Debug, Clone)]
-#[deprecated]
-pub struct HidDeviceInfo {
-    pub path: CString,
-    pub vendor_id: u16,
-    pub product_id: u16,
-    pub serial_number: Option<String>,
-    pub release_number: u16,
-    pub manufacturer_string: Option<String>,
-    pub product_string: Option<String>,
-    pub usage_page: u16,
-    pub usage: u16,
-    pub interface_number: i32,
-}
-
 /// Device information. Use accessors to extract information about Hid devices.
 ///
 /// Note: Methods like `serial_number()` may return None, if the conversion to a
@@ -417,7 +392,9 @@ pub struct DeviceInfo {
     release_number: u16,
     manufacturer_string: WcharString,
     product_string: WcharString,
+    #[allow(dead_code)]
     usage_page: u16,
+    #[allow(dead_code)]
     usage: u16,
     interface_number: i32,
 }
@@ -516,7 +493,7 @@ impl DeviceInfo {
             hidapi.open_serial(self.vendor_id, self.product_id, sn)
         } else {
             Err(HidError::OpenHidDeviceWithDeviceInfoError {
-                device_info: Box::new(self.clone().into()),
+                device_info: Box::new(self.clone()),
             })
         }
     }
@@ -528,55 +505,6 @@ impl fmt::Debug for DeviceInfo {
             .field("vendor_id", &self.vendor_id)
             .field("product_id", &self.product_id)
             .finish()
-    }
-}
-
-impl Into<HidDeviceInfo> for DeviceInfo {
-    fn into(self) -> HidDeviceInfo {
-        HidDeviceInfo {
-            path: self.path,
-            vendor_id: self.vendor_id,
-            product_id: self.product_id,
-            serial_number: match self.serial_number {
-                WcharString::String(s) => Some(s),
-                _ => None,
-            },
-            release_number: self.release_number,
-            manufacturer_string: match self.manufacturer_string {
-                WcharString::String(s) => Some(s),
-                _ => None,
-            },
-            product_string: match self.product_string {
-                WcharString::String(s) => Some(s),
-                _ => None,
-            },
-            usage_page: self.usage_page,
-            usage: self.usage,
-            interface_number: self.interface_number,
-        }
-    }
-}
-
-impl HidDeviceInfo {
-    /// Use the information contained in `HidDeviceInfo` to open
-    /// and return a handle to a [HidDevice](struct.HidDevice.html).
-    ///
-    /// By default the device path is used to open the device.
-    /// When no path is available, then vid, pid and serial number are used.
-    /// If both path and serial number are not available, then this function will
-    /// fail with [HidError::OpenHidDeviceWithDeviceInfoError](enum.HidError.html#variant.OpenHidDeviceWithDeviceInfoError).
-    ///
-    /// Note, that opening a device could still be done using [HidApi::open()](struct.HidApi.html#method.open) directly.
-    pub fn open_device(&self, hidapi: &HidApi) -> HidResult<HidDevice> {
-        if !self.path.as_bytes().is_empty() {
-            hidapi.open_path(self.path.as_c_str())
-        } else if let Some(ref sn) = self.serial_number {
-            hidapi.open_serial(self.vendor_id, self.product_id, sn)
-        } else {
-            Err(HidError::OpenHidDeviceWithDeviceInfoError {
-                device_info: Box::new(self.clone()),
-            })
-        }
     }
 }
 

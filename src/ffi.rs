@@ -1,3 +1,5 @@
+#![allow(unused_imports, dead_code)]
+
 /// **************************************************************************
 /// Copyright (c) 2015 Osspial All Rights Reserved.
 ///
