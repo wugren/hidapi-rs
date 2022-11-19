@@ -25,7 +25,8 @@ fn test_lt() -> Rc<HidDevice> {
 
     let mut devices = api.device_list();
 
-    let dev_info = devices.next()
+    let dev_info = devices
+        .next()
         .expect("There is not a single hid device available");
 
     let dev = Rc::new(
