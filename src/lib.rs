@@ -45,6 +45,11 @@
 //! - `illumos-shared-libusb`: uses statically linked `hidraw` backend on Illumos
 //! - `macos-shared-device`: enables shared access to HID devices on MacOS
 //!
+//! ## Linux backends
+//!
+//! On linux the libusb backends do not support [`DeviceInfo::usage()`] and [`DeviceInfo::usage_page()`].
+//! The hidraw backend supports has support for them, but it might be buggy in older kernel versions.
+//!
 //! ## MacOS Shared device access
 //!
 //! Since `hidapi` 0.12 it is possible to open MacOS devices with shared access, so that multiple
@@ -421,9 +426,11 @@ impl DeviceInfo {
     pub fn path(&self) -> &CStr {
         &self.path
     }
+
     pub fn vendor_id(&self) -> u16 {
         self.vendor_id
     }
+
     pub fn product_id(&self) -> u16 {
         self.product_id
     }
@@ -435,6 +442,7 @@ impl DeviceInfo {
             _ => None,
         }
     }
+
     pub fn serial_number_raw(&self) -> Option<&[wchar_t]> {
         match self.serial_number {
             WcharString::Raw(ref s) => Some(s),
@@ -453,6 +461,7 @@ impl DeviceInfo {
             _ => None,
         }
     }
+
     pub fn manufacturer_string_raw(&self) -> Option<&[wchar_t]> {
         match self.manufacturer_string {
             WcharString::Raw(ref s) => Some(s),
@@ -467,6 +476,7 @@ impl DeviceInfo {
             _ => None,
         }
     }
+
     pub fn product_string_raw(&self) -> Option<&[wchar_t]> {
         match self.product_string {
             WcharString::Raw(ref s) => Some(s),
@@ -474,12 +484,18 @@ impl DeviceInfo {
         }
     }
 
+    /// Usage page is not available on linux libusb backends
+    #[cfg(not(any(feature = "linux-static-libusb", feature = "linux-shared-libusb")))]
     pub fn usage_page(&self) -> u16 {
         self.usage_page
     }
+
+    /// Usage is not available on linux libusb backends
+    #[cfg(not(any(feature = "linux-static-libusb", feature = "linux-shared-libusb")))]
     pub fn usage(&self) -> u16 {
         self.usage
     }
+
     pub fn interface_number(&self) -> i32 {
         self.interface_number
     }
