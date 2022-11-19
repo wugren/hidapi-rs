@@ -48,7 +48,7 @@
 //! ## Linux backends
 //!
 //! On linux the libusb backends do not support [`DeviceInfo::usage()`] and [`DeviceInfo::usage_page()`].
-//! The hidraw backend supports has support for them, but it might be buggy in older kernel versions.
+//! The hidraw backend has support for them, but it might be buggy in older kernel versions.
 //!
 //! ## MacOS Shared device access
 //!
