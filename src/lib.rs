@@ -37,8 +37,8 @@
 //!
 //! # Feature flags
 //!
-//! - `linux-static-libusb`: uses statically linked `libusb` backend on Linux (default)
-//! - `linux-static-hidraw`: uses statically linked `hidraw` backend on Linux
+//! - `linux-static-libusb`: uses statically linked `libusb` backend on Linux
+//! - `linux-static-hidraw`: uses statically linked `hidraw` backend on Linux (default)
 //! - `linux-shared-libusb`: uses dynamically linked `libusb` backend on Linux
 //! - `linux-shared-hidraw`: uses dynamically linked `hidraw` backend on Linux
 //! - `illumos-static-libusb`: uses statically linked `libusb` backend on Illumos (default)
