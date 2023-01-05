@@ -359,6 +359,7 @@ unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidResult<Device
         usage_page: (*src).usage_page,
         usage: (*src).usage,
         interface_number: (*src).interface_number,
+        bus_type: (*src).bus_type,
     })
 }
 
@@ -377,6 +378,8 @@ impl Into<Option<String>> for WcharString {
         }
     }
 }
+
+pub type BusType = ffi::HidBusType;
 
 /// Device information. Use accessors to extract information about Hid devices.
 ///
@@ -397,6 +400,7 @@ pub struct DeviceInfo {
     #[allow(dead_code)]
     usage: u16,
     interface_number: i32,
+    bus_type: BusType,
 }
 
 impl DeviceInfo {
@@ -475,6 +479,10 @@ impl DeviceInfo {
 
     pub fn interface_number(&self) -> i32 {
         self.interface_number
+    }
+
+    pub fn bus_type(&self) -> BusType {
+        self.bus_type
     }
 
     /// Use the information contained in `DeviceInfo` to open
@@ -723,5 +731,17 @@ impl HidDevice {
         };
         let res = self.check_size(res)?;
         unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+    }
+
+    /// Get [`DeviceInfo`] from a HID device.
+    pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
+        let raw_device = unsafe { ffi::hid_get_device_info(self._hid_device) };
+        if raw_device.is_null() {
+            match self.check_error() {
+                Ok(err) | Err(err) => return Err(err),
+            }
+        }
+
+        unsafe { conv_hid_device_info(raw_device) }
     }
 }

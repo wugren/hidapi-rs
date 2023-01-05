@@ -46,6 +46,17 @@ macro_rules! cfg_libusb_only {
 pub type HidDevice = c_void;
 type LibusbContext = c_void;
 
+/// The underlying HID bus type.
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub enum HidBusType {
+    Unknown = 0x00,
+    Usb = 0x01,
+    Bluetooth = 0x02,
+    I2c = 0x03,
+    Spi = 0x04,
+}
+
 #[repr(C)]
 pub struct HidDeviceInfo {
     pub path: *mut c_char,
@@ -59,6 +70,7 @@ pub struct HidDeviceInfo {
     pub usage: c_ushort,
     pub interface_number: c_int,
     pub next: *mut HidDeviceInfo,
+    pub bus_type: HidBusType,
 }
 
 #[allow(dead_code)]
@@ -115,6 +127,7 @@ extern "C" {
         string: *mut wchar_t,
         maxlen: size_t,
     ) -> c_int;
+    pub fn hid_get_device_info(device: *mut HidDevice) -> *mut HidDeviceInfo;
     pub fn hid_get_indexed_string(
         device: *mut HidDevice,
         string_index: c_int,
