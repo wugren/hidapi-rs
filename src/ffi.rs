@@ -48,7 +48,7 @@ type LibusbContext = c_void;
 
 /// The underlying HID bus type.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum HidBusType {
     Unknown = 0x00,
     Usb = 0x01,
