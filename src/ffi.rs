@@ -127,6 +127,7 @@ extern "C" {
         string: *mut wchar_t,
         maxlen: size_t,
     ) -> c_int;
+    pub fn hid_get_device_info(device: *mut HidDevice) -> *mut HidDeviceInfo;
     pub fn hid_get_indexed_string(
         device: *mut HidDevice,
         string_index: c_int,

@@ -732,4 +732,16 @@ impl HidDevice {
         let res = self.check_size(res)?;
         unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
     }
+
+    /// Get [`DeviceInfo`] from a HID device.
+    pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
+        let raw_device = unsafe { ffi::hid_get_device_info(self._hid_device) };
+        if raw_device.is_null() {
+            match self.check_error() {
+                Ok(err) | Err(err) => return Err(err),
+            }
+        }
+
+        unsafe { conv_hid_device_info(raw_device) }
+    }
 }
