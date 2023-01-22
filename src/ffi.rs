@@ -7,6 +7,7 @@
 /// *************************************************************************
 // For documentation look at the corresponding C header file hidapi.h
 use libc::{c_char, c_int, c_uchar, c_ushort, c_void, intptr_t, size_t, wchar_t};
+type HidBusType = crate::BusType;
 
 #[doc(hidden)]
 #[macro_export]
@@ -45,17 +46,6 @@ macro_rules! cfg_libusb_only {
 
 pub type HidDevice = c_void;
 type LibusbContext = c_void;
-
-/// The underlying HID bus type.
-#[repr(C)]
-#[derive(Copy, Clone, Debug)]
-pub enum HidBusType {
-    Unknown = 0x00,
-    Usb = 0x01,
-    Bluetooth = 0x02,
-    I2c = 0x03,
-    Spi = 0x04,
-}
 
 #[repr(C)]
 pub struct HidDeviceInfo {
