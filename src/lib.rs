@@ -379,7 +379,16 @@ impl Into<Option<String>> for WcharString {
     }
 }
 
-pub type BusType = ffi::HidBusType;
+/// The underlying HID bus type.
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+pub enum BusType {
+    Unknown = 0x00,
+    Usb = 0x01,
+    Bluetooth = 0x02,
+    I2c = 0x03,
+    Spi = 0x04,
+}
 
 /// Device information. Use accessors to extract information about Hid devices.
 ///
