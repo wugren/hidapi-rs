@@ -8,42 +8,6 @@
 // For documentation look at the corresponding C header file hidapi.h
 use libc::{c_char, c_int, c_uchar, c_ushort, c_void, intptr_t, size_t, wchar_t};
 type HidBusType = crate::BusType;
-
-#[doc(hidden)]
-#[macro_export]
-macro_rules! cfg_libusb_only {
-    ($i: block) => {
-        #[cfg(any(
-            all(
-                target_os = "linux",
-                any(feature = "linux-static-libusb", feature = "linux-shared-libusb",)
-            ),
-            all(
-                target_os = "illumos",
-                any(feature = "illumos-static-libusb", feature = "illumos-shared-libusb",)
-            ),
-            target_os = "freebsd",
-            target_os = "openbsd"
-        ))]
-        $i
-    };
-    ($i: item) => {
-        #[cfg(any(
-            all(
-                target_os = "linux",
-                any(feature = "linux-static-libusb", feature = "linux-shared-libusb",)
-            ),
-            all(
-                target_os = "illumos",
-                any(feature = "illumos-static-libusb", feature = "illumos-shared-libusb",)
-            ),
-            target_os = "freebsd",
-            target_os = "openbsd"
-        ))]
-        $i
-    };
-}
-
 pub type HidDevice = c_void;
 type LibusbContext = c_void;
 
@@ -76,12 +40,10 @@ extern "C" {
         serial_number: *const wchar_t,
     ) -> *mut HidDevice;
     pub fn hid_open_path(path: *const c_char) -> *mut HidDevice;
-    cfg_libusb_only! {
+    #[cfg(libusb)]
     pub fn hid_libusb_wrap_sys_device(sys_dev: intptr_t, interface_num: c_int) -> *mut HidDevice;
-    }
-    cfg_libusb_only! {
+    #[cfg(libusb)]
     pub fn libusb_set_option(ctx: *mut LibusbContext, option: c_int);
-    }
     pub fn hid_write(device: *mut HidDevice, data: *const c_uchar, length: size_t) -> c_int;
     pub fn hid_read_timeout(
         device: *mut HidDevice,

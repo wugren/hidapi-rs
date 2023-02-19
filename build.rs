@@ -74,6 +74,7 @@ fn compile_linux() {
                     );
                 }
                 config.compile("libhidapi.a");
+                println!("cargo:rustc-cfg=libusb");
             }),
         ),
         (
@@ -86,6 +87,7 @@ fn compile_linux() {
             "LINUX_SHARED_LIBUSB",
             Box::new(|| {
                 pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
+                println!("cargo:rustc-cfg=libusb");
             }),
         ),
     ];
@@ -114,10 +116,12 @@ fn compile_linux() {
 
 fn compile_freebsd() {
     pkg_config::probe_library("hidapi").expect("Unable to find hidapi");
+    println!("cargo:rustc-cfg=libusb");
 }
 
 fn compile_openbsd() {
     pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi");
+    println!("cargo:rustc-cfg=libusb");
 }
 
 fn compile_illumos() {
@@ -161,6 +165,8 @@ fn compile_illumos() {
 
     // Build it!
     (backends.next().unwrap().1)();
+
+    println!("cargo:rustc-cfg=libusb");
 }
 
 fn compile_windows() {

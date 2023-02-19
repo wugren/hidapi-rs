@@ -164,11 +164,11 @@ impl HidApi {
         // Do not scan for devices in libusb_init()
         // Must be set before calling it.
         // This is needed on Android, where access to USB devices is limited
-        cfg_libusb_only! {{
-            unsafe {
-                ffi::libusb_set_option(std::ptr::null_mut(), 2);
-            }
-        }}
+
+        #[cfg(libusb)]
+        unsafe {
+            ffi::libusb_set_option(std::ptr::null_mut(), 2);
+        }
 
         let lock = HidApiLock::acquire()?;
         Ok(HidApi {
@@ -269,12 +269,10 @@ impl HidApi {
         }
     }
 
-    cfg_libusb_only! {
     /// Open a HID device using libusb_wrap_sys_device.
+    #[cfg(libusb)]
     pub fn wrap_sys_device(&self, sys_dev: isize, interface_num: i32) -> HidResult<HidDevice> {
-        let device = unsafe {
-            ffi::hid_libusb_wrap_sys_device(sys_dev, interface_num)
-        };
+        let device = unsafe { ffi::hid_libusb_wrap_sys_device(sys_dev, interface_num) };
 
         if device.is_null() {
             match self.check_error() {
@@ -287,7 +285,6 @@ impl HidApi {
                 _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
-    }
     }
 
     /// Get the last non-device specific error, which happened in the underlying hidapi C library.
@@ -475,13 +472,13 @@ impl DeviceInfo {
     }
 
     /// Usage page is not available on linux libusb backends
-    #[cfg(not(any(feature = "linux-static-libusb", feature = "linux-shared-libusb")))]
+    #[cfg(not(all(libusb, target_os = "linux")))]
     pub fn usage_page(&self) -> u16 {
         self.usage_page
     }
 
     /// Usage is not available on linux libusb backends
-    #[cfg(not(any(feature = "linux-static-libusb", feature = "linux-shared-libusb")))]
+    #[cfg(not(all(libusb, target_os = "linux")))]
     pub fn usage(&self) -> u16 {
         self.usage
     }
