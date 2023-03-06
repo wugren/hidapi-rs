@@ -76,9 +76,7 @@ use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
 use std::fmt::Debug;
-use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::Mutex;
 
 pub use error::HidError;
 
@@ -86,94 +84,94 @@ pub type HidResult<T> = Result<T, HidError>;
 
 const STRING_BUF_LEN: usize = 128;
 
-/// Hidapi context and device member, which ensures deinitialization
-/// of the C library happens, when, and only when all devices and the api instance is dropped.
-struct HidApiLock;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InitState {
+    NotInit,
+    Init { enumerate: bool },
+}
 
-impl HidApiLock {
-    fn acquire() -> HidResult<HidApiLock> {
-        const EXPECTED_CURRENT: bool = false;
+static INIT_STATE: Mutex<InitState> = Mutex::new(InitState::NotInit);
 
-        let previous = match HID_API_LOCK.compare_exchange(
-            EXPECTED_CURRENT,
-            true,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ) {
-            Ok(x) => x,
-            Err(x) => x,
-        };
+fn lazy_init(do_enumerate: bool) -> HidResult<()> {
+    let mut init_state = INIT_STATE.lock().unwrap();
 
-        if EXPECTED_CURRENT == previous {
-            // Initialize the HID and prevent other HIDs from being created
-            unsafe {
-                if ffi::hid_init() == -1 {
-                    HID_API_LOCK.store(false, Ordering::SeqCst);
-                    return Err(HidError::InitializationError);
-                }
-
-                #[cfg(all(target_os = "macos", feature = "macos-shared-device"))]
-                {
-                    unsafe { ffi::macos::hid_darwin_set_open_exclusive(0) }
-                }
-
-                Ok(HidApiLock)
+    match *init_state {
+        InitState::NotInit => {
+            #[cfg(libusb)]
+            if !do_enumerate {
+                // Do not scan for devices in libusb_init()
+                // Must be set before calling it.
+                // This is needed on Android, where access to USB devices is limited
+                unsafe { ffi::libusb_set_option(std::ptr::null_mut(), 2) }
             }
-        } else {
-            Err(HidError::InitializationError)
+
+            // Initialize the HID
+            if unsafe { ffi::hid_init() } == -1 {
+                return Err(HidError::InitializationError);
+            }
+
+            #[cfg(all(target_os = "macos", feature = "macos-shared-device"))]
+            unsafe {
+                ffi::macos::hid_darwin_set_open_exclusive(0)
+            }
+
+            *init_state = InitState::Init {
+                enumerate: do_enumerate,
+            }
+        }
+        InitState::Init { enumerate } => {
+            if enumerate != do_enumerate {
+                panic!("Trying to initialize hidapi with enumeration={}, but it is already initialized with enumeration={}.", do_enumerate, enumerate)
+            }
         }
     }
+
+    Ok(())
 }
 
-impl Drop for HidApiLock {
-    fn drop(&mut self) {
-        unsafe {
-            ffi::hid_exit();
-        }
-        HID_API_LOCK.store(false, Ordering::SeqCst);
-    }
-}
-
-/// Object for handling hidapi context and implementing RAII for it.
-/// Only one instance can exist at a time.
+/// `hidapi` context.
+///
+/// The `hidapi` C library is lazily initialized when creating the first instance,
+/// and never deinitialized. Therefore, it is allowed to create multiple `HidApi`
+/// instances.
+///
+/// Each instance has its own device list cache.
 pub struct HidApi {
     device_list: Vec<DeviceInfo>,
-    _lock: Arc<HidApiLock>,
 }
 
-static HID_API_LOCK: AtomicBool = AtomicBool::new(false);
-
 impl HidApi {
-    /// Initializes the hidapi.
+    /// Create a new hidapi context.
     ///
     /// Will also initialize the currently available device list.
+    ///
+    /// # Panics
+    ///
+    /// Panics if hidapi is already initialized in "without enumerate" mode
+    /// (i.e. if `new_without_enumerate()` has been called before).
     pub fn new() -> HidResult<Self> {
-        let lock = HidApiLock::acquire()?;
+        lazy_init(true)?;
 
         let device_list = unsafe { HidApi::get_hid_device_info_vector()? };
 
         Ok(HidApi {
             device_list: device_list.clone(),
-            _lock: Arc::new(lock),
         })
     }
 
-    /// Initializes the hidapi.
-    /// it skips device scanning.
+    /// Create a new hidapi context, in "do not enumerate" mode.
+    ///
+    /// This is needed on Android, where access to USB device enumeration is limited.
+    ///
+    /// # Panics
+    ///
+    /// Panics if hidapi is already initialized in "do enumerate" mode
+    /// (i.e. if `new()` has been called before).
     pub fn new_without_enumerate() -> HidResult<Self> {
-        // Do not scan for devices in libusb_init()
-        // Must be set before calling it.
-        // This is needed on Android, where access to USB devices is limited
+        lazy_init(false)?;
 
-        #[cfg(libusb)]
-        unsafe {
-            ffi::libusb_set_option(std::ptr::null_mut(), 2);
-        }
-
-        let lock = HidApiLock::acquire()?;
         Ok(HidApi {
             device_list: Vec::new(),
-            _lock: Arc::new(lock),
         })
     }
 
@@ -226,7 +224,6 @@ impl HidApi {
         } else {
             Ok(HidDevice {
                 _hid_device: device,
-                _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
     }
@@ -245,7 +242,6 @@ impl HidApi {
         } else {
             Ok(HidDevice {
                 _hid_device: device,
-                _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
     }
@@ -264,7 +260,6 @@ impl HidApi {
         } else {
             Ok(HidDevice {
                 _hid_device: device,
-                _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
     }
@@ -282,7 +277,6 @@ impl HidApi {
         } else {
             Ok(HidDevice {
                 _hid_device: device,
-                _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
     }
@@ -525,8 +519,6 @@ impl fmt::Debug for DeviceInfo {
 /// Object for accessing HID device
 pub struct HidDevice {
     _hid_device: *mut ffi::HidDevice,
-    /// Prevents this from outliving the api instance that created it
-    _lock: ManuallyDrop<Arc<HidApiLock>>,
 }
 
 unsafe impl Send for HidDevice {}
@@ -539,10 +531,7 @@ impl Debug for HidDevice {
 
 impl Drop for HidDevice {
     fn drop(&mut self) {
-        unsafe {
-            ffi::hid_close(self._hid_device);
-            ManuallyDrop::drop(&mut self._lock);
-        };
+        unsafe { ffi::hid_close(self._hid_device) }
     }
 }
 

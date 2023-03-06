@@ -31,7 +31,7 @@ impl Display for HidError {
                 write!(f, "failed converting {:#X} to rust char", wide_char)
             }
             HidError::InitializationError => {
-                write!(f, "Failed to initialize hidapi (maybe initialized before?)")
+                write!(f, "Failed to initialize hidapi")
             }
             HidError::InvalidZeroSizeData => write!(f, "Invalid data: size can not be 0"),
             HidError::IncompleteSendError { sent, all } => write!(
