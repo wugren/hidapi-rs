@@ -277,7 +277,6 @@ impl HidApi {
         } else {
             Ok(HidDevice {
                 _hid_device: device,
-                _lock: ManuallyDrop::new(self._lock.clone()),
             })
         }
     }
