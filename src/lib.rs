@@ -97,6 +97,7 @@ use crate::hidapi::HidApiBackend;
 use linux_native::HidApiBackend;
 
 pub type HidResult<T> = Result<T, HidError>;
+pub const MAX_REPORT_DESCRIPTOR_SIZE: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InitState {
@@ -434,6 +435,7 @@ trait HidDeviceBackendBase {
     fn get_manufacturer_string(&self) -> HidResult<Option<String>>;
     fn get_product_string(&self) -> HidResult<Option<String>>;
     fn get_serial_number_string(&self) -> HidResult<Option<String>>;
+    fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize>;
 
     fn get_indexed_string(&self, _index: i32) -> HidResult<Option<String>> {
         Err(HidError::HidApiError {
@@ -589,6 +591,14 @@ impl HidDevice {
     /// Get a string from a HID device, based on its string index.
     pub fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
         self.inner.get_indexed_string(index)
+    }
+
+    /// Get a report descriptor from a HID device
+    ///
+    /// User has to provide a preallocated buffer where the descriptor will be copied to.
+    /// It is recommended to use a preallocated buffer of [`MAX_REPORT_DESCRIPTOR_SIZE`] size.
+    pub fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
+        self.inner.get_report_descriptor(buf)
     }
 
     /// Get [`DeviceInfo`] from a HID device.

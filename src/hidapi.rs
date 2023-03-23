@@ -330,4 +330,11 @@ impl HidDeviceBackendBase for HidDevice {
 
         unsafe { conv_hid_device_info(raw_device) }
     }
+
+    fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
+        let res = unsafe {
+            ffi::hid_get_report_descriptor(self._hid_device, buf.as_mut_ptr(), buf.len())
+        };
+        self.check_size(res)
+    }
 }
