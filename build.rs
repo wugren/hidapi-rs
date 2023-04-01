@@ -46,7 +46,7 @@ fn compile_linux() {
     // First check the features enabled for the crate.
     // Only one linux backend should be enabled at a time.
 
-    let avail_backends: [(&'static str, Box<dyn Fn()>); 4] = [
+    let avail_backends: [(&'static str, Box<dyn Fn()>); 5] = [
         (
             "LINUX_STATIC_HIDRAW",
             Box::new(|| {
@@ -90,6 +90,13 @@ fn compile_linux() {
             Box::new(|| {
                 pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
                 println!("cargo:rustc-cfg=libusb");
+            }),
+        ),
+        (
+            "LINUX_SHARED_UDEV",
+            Box::new(|| {
+                pkg_config::probe_library("hidapi-hidraw").expect("Unable to find hidapi-hidraw");
+                println!("cargo:rustc-cfg=linuxudev");
             }),
         ),
     ];

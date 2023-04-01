@@ -23,12 +23,16 @@ linux-static-libusb = []
 linux-static-hidraw = []
 linux-shared-libusb = []
 linux-shared-hidraw = []
+linux-shared-udev = ["dep:udev"]
 illumos-static-libusb = []
 illumos-shared-libusb = []
 macos-shared-device = []
 
 [dependencies]
 libc = "0.2"
+
+[target.x86_64-unknown-linux-gnu.dependencies]
+udev = { version = "0.7", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 winapi = "0.3.9"

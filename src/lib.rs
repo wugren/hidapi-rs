@@ -41,6 +41,7 @@
 //! - `linux-static-hidraw`: uses statically linked `hidraw` backend on Linux (default)
 //! - `linux-shared-libusb`: uses dynamically linked `libusb` backend on Linux
 //! - `linux-shared-hidraw`: uses dynamically linked `hidraw` backend on Linux
+//! - `linux-shared-udev`: uses dynamically linked `udev` backend on Linux
 //! - `illumos-static-libusb`: uses statically linked `libusb` backend on Illumos (default)
 //! - `illumos-shared-libusb`: uses statically linked `hidraw` backend on Illumos
 //! - `macos-shared-device`: enables shared access to HID devices on MacOS
@@ -106,6 +107,7 @@ fn lazy_init(do_enumerate: bool) -> HidResult<()> {
             }
 
             // Initialize the HID
+            #[cfg(not(linuxudev))]
             if unsafe { ffi::hid_init() } == -1 {
                 return Err(HidError::InitializationError);
             }
