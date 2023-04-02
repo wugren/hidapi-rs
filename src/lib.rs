@@ -65,6 +65,9 @@ extern crate winapi;
 mod error;
 mod ffi;
 
+#[cfg(linuxudev)]
+#[cfg_attr(docsrs, doc(cfg(linuxudev)))]
+mod linux_udev;
 #[cfg(target_os = "macos")]
 #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
 mod macos;
@@ -154,7 +157,7 @@ impl HidApi {
     pub fn new() -> HidResult<Self> {
         lazy_init(true)?;
 
-        let device_list = unsafe { HidApi::get_hid_device_info_vector()? };
+        let device_list = HidApi::get_hid_device_info_vector()?;
 
         Ok(HidApi { device_list })
     }
@@ -178,31 +181,36 @@ impl HidApi {
     /// Refresh devices list and information about them (to access them use
     /// `device_list()` method)
     pub fn refresh_devices(&mut self) -> HidResult<()> {
-        let device_list = unsafe { HidApi::get_hid_device_info_vector()? };
+        let device_list = HidApi::get_hid_device_info_vector()?;
         self.device_list = device_list;
         Ok(())
     }
 
-    unsafe fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
+    #[cfg(not(linuxudev))]
+    fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
         let mut device_vector = Vec::with_capacity(8);
 
-        let enumeration = ffi::hid_enumerate(0, 0);
+        let enumeration = unsafe { ffi::hid_enumerate(0, 0) };
         {
             let mut current_device = enumeration;
 
             while !current_device.is_null() {
-                device_vector.push(conv_hid_device_info(current_device)?);
-                current_device = (*current_device).next;
+                device_vector.push(unsafe { conv_hid_device_info(current_device)? });
+                current_device = unsafe { (*current_device).next };
             }
         }
 
         if !enumeration.is_null() {
-            ffi::hid_free_enumeration(enumeration);
+            unsafe { ffi::hid_free_enumeration(enumeration) };
         }
 
         Ok(device_vector)
     }
 
+    #[cfg(linuxudev)]
+    fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
+        linux_udev::enumerate_devices()
+    }
     /// Returns iterator containing information about attached HID devices.
     pub fn device_list(&self) -> impl Iterator<Item = &DeviceInfo> {
         self.device_list.iter()
