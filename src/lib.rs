@@ -58,6 +58,8 @@
 //! an opt-in that can be enabled with the `macos-shared-device` feature flag.
 
 extern crate libc;
+#[cfg(linuxudev)]
+extern crate nix;
 
 #[cfg(target_os = "windows")]
 extern crate winapi;

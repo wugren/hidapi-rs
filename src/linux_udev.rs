@@ -6,8 +6,13 @@ use std::{
     ffi::{CStr, CString, OsStr, OsString},
     fs::{File, OpenOptions},
     io::prelude::*,
-    os::unix::{ffi::OsStringExt, fs::OpenOptionsExt},
+    os::{
+        fd::AsRawFd,
+        unix::{ffi::OsStringExt, fs::OpenOptionsExt},
+    },
 };
+
+use nix::ioctl_readwrite_buf;
 
 use super::{BusType, DeviceInfo, HidError, HidResult, WcharString};
 
@@ -189,6 +194,24 @@ fn parse_hid_vid_pid(s: &str) -> Option<(u16, u16, u16)> {
     Some((numbers[0], numbers[1], numbers[2]))
 }
 
+// From linux/hidraw.h
+const HIDRAW_IOC_MAGIC: u8 = b'H';
+const HIDRAW_SET_FEATURE: u8 = 0x06;
+const HIDRAW_GET_FEATURE: u8 = 0x07;
+
+ioctl_readwrite_buf!(
+    hidraw_ioc_set_feature,
+    HIDRAW_IOC_MAGIC,
+    HIDRAW_SET_FEATURE,
+    u8
+);
+ioctl_readwrite_buf!(
+    hidraw_ioc_get_feature,
+    HIDRAW_IOC_MAGIC,
+    HIDRAW_GET_FEATURE,
+    u8
+);
+
 /// Object for accessing the HID device
 pub struct HidDevice {
     file: File,
@@ -265,11 +288,44 @@ impl HidDevice {
     }
 
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
-        todo!()
+        if data.is_empty() {
+            return Err(HidError::InvalidZeroSizeData);
+        }
+
+        // The ioctl is marked as read-write so we need to mess with the
+        // mutability even though nothing should get written
+        let res = match unsafe {
+            hidraw_ioc_set_feature(self.file.as_raw_fd(), &mut *(data as *const _ as *mut _))
+        } {
+            Ok(n) => n as usize,
+            Err(e) => {
+                return Err(HidError::HidApiError {
+                    message: format!("ioctl (SFEATURE): {e}"),
+                })
+            }
+        };
+
+        if res != data.len() {
+            return Err(HidError::IncompleteSendError {
+                sent: res,
+                all: data.len(),
+            });
+        }
+
+        Ok(())
     }
 
     pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
-        todo!()
+        let res = match unsafe { hidraw_ioc_get_feature(self.file.as_raw_fd(), buf) } {
+            Ok(n) => n as usize,
+            Err(e) => {
+                return Err(HidError::HidApiError {
+                    message: format!("ioctl (GFEATURE): {e}"),
+                })
+            }
+        };
+
+        Ok(res)
     }
 
     pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
