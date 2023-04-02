@@ -5,6 +5,7 @@ extern crate udev;
 use std::{
     ffi::{CStr, CString, OsStr, OsString},
     fs::{File, OpenOptions},
+    io::prelude::*,
     os::unix::{ffi::OsStringExt, fs::OpenOptionsExt},
 };
 
@@ -241,12 +242,22 @@ impl HidDevice {
         todo!()
     }
 
-    pub fn write(&self, data: &[u8]) -> HidResult<usize> {
-        todo!()
+    pub fn write(&mut self, data: &[u8]) -> HidResult<usize> {
+        match self.file.write(data) {
+            Ok(w) => Ok(w),
+            Err(e) => Err(HidError::HidApiError {
+                message: format!("{e}"),
+            }),
+        }
     }
 
-    pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
-        todo!()
+    pub fn read(&mut self, buf: &mut [u8]) -> HidResult<usize> {
+        match self.file.read(buf) {
+            Ok(w) => Ok(w),
+            Err(e) => Err(HidError::HidApiError {
+                message: format!("{e}"),
+            }),
+        }
     }
 
     pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
