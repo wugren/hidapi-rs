@@ -12,7 +12,10 @@ use std::{
     },
 };
 
-use nix::ioctl_readwrite_buf;
+use nix::{
+    ioctl_readwrite_buf,
+    poll::{poll, PollFd, PollFlags},
+};
 
 use super::{BusType, DeviceInfo, HidError, HidResult, WcharString};
 
@@ -283,8 +286,38 @@ impl HidDevice {
         }
     }
 
-    pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        todo!()
+    pub fn read_timeout(&mut self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
+        let pollfd = PollFd::new(self.file.as_raw_fd(), PollFlags::POLLIN);
+        let res = match poll(&mut [pollfd], timeout) {
+            Ok(n) => n,
+            Err(e) => {
+                return Err(HidError::HidApiError {
+                    message: format!("{e}"),
+                })
+            }
+        };
+
+        if res == 0 {
+            return Ok(0);
+        }
+
+        let events = pollfd
+            .revents()
+            .map(|e| e.intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL));
+
+        if events.is_none() || events == Some(true) {
+            return Err(HidError::HidApiError {
+                message: format!("unexpected poll error (device disconnected)"),
+            });
+        }
+
+        // This is not quite the same error handling as the C library
+        match self.file.read(buf) {
+            Ok(w) => Ok(w),
+            Err(e) => Err(HidError::HidApiError {
+                message: format!("{e}"),
+            }),
+        }
     }
 
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
