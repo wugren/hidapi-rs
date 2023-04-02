@@ -84,6 +84,9 @@ use std::sync::Mutex;
 
 pub use error::HidError;
 
+#[cfg(linuxudev)]
+pub use linux_udev::HidDevice;
+
 pub type HidResult<T> = Result<T, HidError>;
 
 const STRING_BUF_LEN: usize = 128;
@@ -221,6 +224,7 @@ impl HidApi {
     /// When multiple devices with the same vid and pid are available, then the
     /// first one found in the internal device list will be used. There are however
     /// no guarantees, which device this will be.
+    #[cfg(not(linuxudev))]
     pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
         let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
 
@@ -236,8 +240,14 @@ impl HidApi {
         }
     }
 
+    #[cfg(linuxudev)]
+    pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
+        HidDevice::open(vid, pid, None)
+    }
+
     /// Open a HID device using a Vendor ID (VID), Product ID (PID) and
     /// a serial number.
+    #[cfg(not(linuxudev))]
     pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
         let mut chars = sn.chars().map(|c| c as wchar_t).collect::<Vec<_>>();
         chars.push(0 as wchar_t);
@@ -254,9 +264,15 @@ impl HidApi {
         }
     }
 
+    #[cfg(linuxudev)]
+    pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
+        HidDevice::open(vid, pid, Some(sn))
+    }
+
     /// The path name be determined by inspecting the device list available with [HidApi::devices()](struct.HidApi.html#method.devices)
     ///
     /// Alternatively a platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
+    #[cfg(not(linuxudev))]
     pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
         let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
 
@@ -270,6 +286,11 @@ impl HidApi {
                 _hid_device: device,
             })
         }
+    }
+
+    #[cfg(linuxudev)]
+    pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
+        HidDevice::open_path(device_path)
     }
 
     /// Open a HID device using libusb_wrap_sys_device.
@@ -525,24 +546,29 @@ impl fmt::Debug for DeviceInfo {
 }
 
 /// Object for accessing HID device
+#[cfg(not(linuxudev))]
 pub struct HidDevice {
     _hid_device: *mut ffi::HidDevice,
 }
 
+#[cfg(not(linuxudev))]
 unsafe impl Send for HidDevice {}
 
+#[cfg(not(linuxudev))]
 impl Debug for HidDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HidDevice").finish()
     }
 }
 
+#[cfg(not(linuxudev))]
 impl Drop for HidDevice {
     fn drop(&mut self) {
         unsafe { ffi::hid_close(self._hid_device) }
     }
 }
 
+#[cfg(not(linuxudev))]
 impl HidDevice {
     /// Check size returned by other methods, if it's equal to -1 check for
     /// error and return Error, otherwise return size as unsigned number

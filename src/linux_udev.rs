@@ -3,11 +3,11 @@
 extern crate udev;
 
 use std::{
-    ffi::{CString, OsStr, OsString},
+    ffi::{CStr, CString, OsStr, OsString},
     os::unix::ffi::OsStringExt,
 };
 
-use super::{BusType, DeviceInfo, HidResult, WcharString};
+use super::{BusType, DeviceInfo, HidError, HidResult, WcharString};
 
 /// Enumerate the hidraw devices
 pub fn enumerate_devices() -> HidResult<Vec<DeviceInfo>> {
@@ -185,6 +185,75 @@ fn parse_hid_vid_pid(s: &str) -> Option<(u16, u16, u16)> {
 
     let numbers: Vec<u16> = elems.into_iter().map(|n| n.unwrap()).collect();
     Some((numbers[0], numbers[1], numbers[2]))
+}
+
+/// Object for accessing the HID device
+pub struct HidDevice {
+    device: udev::Device,
+}
+
+unsafe impl Send for HidDevice {}
+
+// API for the library to call us
+impl HidDevice {
+    pub(crate) fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<Self> {
+        todo!()
+    }
+
+    pub(crate) fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
+        todo!()
+    }
+}
+
+// Public API for users
+impl HidDevice {
+    pub fn check_error(&self) -> HidResult<HidError> {
+        todo!()
+    }
+
+    pub fn write(&self, data: &[u8]) -> HidResult<usize> {
+        todo!()
+    }
+
+    pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
+        todo!()
+    }
+
+    pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
+        todo!()
+    }
+
+    pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
+        todo!()
+    }
+
+    pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
+        todo!()
+    }
+
+    pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
+        todo!()
+    }
+
+    pub fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
+        todo!()
+    }
+
+    pub fn get_product_string(&self) -> HidResult<Option<String>> {
+        todo!()
+    }
+
+    pub fn get_serial_number_string(&self) -> HidResult<Option<String>> {
+        todo!()
+    }
+
+    pub fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
+        todo!()
+    }
+
+    pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
