@@ -383,7 +383,7 @@ unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidResult<Device
     })
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum WcharString {
     String(String),
     Raw(Vec<wchar_t>),

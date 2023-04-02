@@ -4,7 +4,8 @@ extern crate udev;
 
 use std::{
     ffi::{CStr, CString, OsStr, OsString},
-    os::unix::ffi::OsStringExt,
+    fs::{File, OpenOptions},
+    os::unix::{ffi::OsStringExt, fs::OpenOptionsExt},
 };
 
 use super::{BusType, DeviceInfo, HidError, HidResult, WcharString};
@@ -189,7 +190,7 @@ fn parse_hid_vid_pid(s: &str) -> Option<(u16, u16, u16)> {
 
 /// Object for accessing the HID device
 pub struct HidDevice {
-    device: udev::Device,
+    file: File,
 }
 
 unsafe impl Send for HidDevice {}
@@ -197,11 +198,40 @@ unsafe impl Send for HidDevice {}
 // API for the library to call us
 impl HidDevice {
     pub(crate) fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<Self> {
-        todo!()
+        // TODO: fix this up so we don't copy the serial number
+        let sn = sn.map(|s| WcharString::String(s.to_string()));
+        for device in enumerate_devices()? {
+            if device.vendor_id == vid && device.product_id == pid {
+                if sn.is_none() || sn == Some(device.serial_number) {
+                    return Self::open_path(&device.path);
+                }
+            }
+        }
+
+        return Err(HidError::HidApiError {
+            message: "device not found".into(),
+        });
     }
 
     pub(crate) fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
-        todo!()
+        // Paths on Linux can be anything but devnode paths are going to be ASCII
+        let path = device_path.to_str().expect("path must be utf-8");
+        let file = match OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(libc::O_CLOEXEC)
+            .open(path)
+        {
+            Ok(f) => f,
+            Err(e) => {
+                return Err(HidError::HidApiError {
+                    message: format!("{e}"),
+                });
+            }
+        };
+
+        // TODO: maybe add that ioctl check that the C version has
+        Ok(Self { file })
     }
 }
 
