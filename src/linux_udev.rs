@@ -3,7 +3,7 @@
 extern crate udev;
 
 use std::{
-    cell::{Ref, RefCell},
+    cell::{Cell, Ref, RefCell},
     ffi::{CStr, CString, OsStr, OsString},
     fs::{File, OpenOptions},
     io::prelude::*,
@@ -220,8 +220,8 @@ ioctl_readwrite_buf!(
 /// Object for accessing the HID device
 pub struct HidDevice {
     path: PathBuf,
-    blocking: bool,
-    file: File,
+    blocking: Cell<bool>,
+    file: RefCell<File>,
     info: RefCell<Option<DeviceInfo>>,
 }
 
@@ -257,8 +257,8 @@ impl HidDevice {
         // TODO: maybe add that ioctl check that the C version has
         Ok(Self {
             path: path.into(),
-            blocking: true,
-            file,
+            blocking: Cell::new(true),
+            file: RefCell::new(file),
             info: RefCell::new(None),
         })
     }
@@ -270,18 +270,18 @@ impl HidDevice {
         todo!()
     }
 
-    pub fn write(&mut self, data: &[u8]) -> HidResult<usize> {
-        Ok(self.file.write(data)?)
+    pub fn write(&self, data: &[u8]) -> HidResult<usize> {
+        Ok(self.file.borrow_mut().write(data)?)
     }
 
-    pub fn read(&mut self, buf: &mut [u8]) -> HidResult<usize> {
+    pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
         // If the caller asked for blocking, -1 makes us wait forever
-        let timeout = if self.blocking { -1 } else { 0 };
+        let timeout = if self.blocking.get() { -1 } else { 0 };
         self.read_timeout(buf, timeout)
     }
 
-    pub fn read_timeout(&mut self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        let pollfd = PollFd::new(self.file.as_raw_fd(), PollFlags::POLLIN);
+    pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
+        let pollfd = PollFd::new(self.file.borrow().as_raw_fd(), PollFlags::POLLIN);
         let res = poll(&mut [pollfd], timeout)?;
 
         if res == 0 {
@@ -299,7 +299,7 @@ impl HidDevice {
         }
 
         // This is not quite the same error handling as the C library
-        Ok(self.file.read(buf)?)
+        Ok(self.file.borrow_mut().read(buf)?)
     }
 
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
@@ -310,7 +310,10 @@ impl HidDevice {
         // The ioctl is marked as read-write so we need to mess with the
         // mutability even though nothing should get written
         let res = match unsafe {
-            hidraw_ioc_set_feature(self.file.as_raw_fd(), &mut *(data as *const _ as *mut _))
+            hidraw_ioc_set_feature(
+                self.file.borrow().as_raw_fd(),
+                &mut *(data as *const _ as *mut _),
+            )
         } {
             Ok(n) => n as usize,
             Err(e) => {
@@ -331,7 +334,7 @@ impl HidDevice {
     }
 
     pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let res = match unsafe { hidraw_ioc_get_feature(self.file.as_raw_fd(), buf) } {
+        let res = match unsafe { hidraw_ioc_get_feature(self.file.borrow().as_raw_fd(), buf) } {
             Ok(n) => n as usize,
             Err(e) => {
                 return Err(HidError::HidApiError {
@@ -343,8 +346,8 @@ impl HidDevice {
         Ok(res)
     }
 
-    pub fn set_blocking_mode(&mut self, blocking: bool) -> HidResult<()> {
-        self.blocking = blocking;
+    pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
+        self.blocking.set(blocking);
         Ok(())
     }
 
