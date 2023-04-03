@@ -95,7 +95,7 @@ fn compile_linux() {
         (
             "LINUX_SHARED_UDEV",
             Box::new(|| {
-                pkg_config::probe_library("hidapi-hidraw").expect("Unable to find hidapi-hidraw");
+                // The udev crate takes care of finding its library
                 println!("cargo:rustc-cfg=linuxudev");
             }),
         ),
