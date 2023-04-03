@@ -220,6 +220,7 @@ ioctl_readwrite_buf!(
 /// Object for accessing the HID device
 pub struct HidDevice {
     path: PathBuf,
+    blocking: bool,
     file: File,
     info: RefCell<Option<DeviceInfo>>,
 }
@@ -250,7 +251,7 @@ impl HidDevice {
         let file = match OpenOptions::new()
             .read(true)
             .write(true)
-            .custom_flags(libc::O_CLOEXEC)
+            .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
             .open(path)
         {
             Ok(f) => f,
@@ -264,6 +265,7 @@ impl HidDevice {
         // TODO: maybe add that ioctl check that the C version has
         Ok(Self {
             path: path.into(),
+            blocking: true,
             file,
             info: RefCell::new(None),
         })
@@ -286,12 +288,9 @@ impl HidDevice {
     }
 
     pub fn read(&mut self, buf: &mut [u8]) -> HidResult<usize> {
-        match self.file.read(buf) {
-            Ok(w) => Ok(w),
-            Err(e) => Err(HidError::HidApiError {
-                message: format!("{e}"),
-            }),
-        }
+        // If the caller asked for blocking, -1 makes us wait forever
+        let timeout = if self.blocking { -1 } else { 0 };
+        self.read_timeout(buf, timeout)
     }
 
     pub fn read_timeout(&mut self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
@@ -369,8 +368,9 @@ impl HidDevice {
         Ok(res)
     }
 
-    pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
-        todo!()
+    pub fn set_blocking_mode(&mut self, blocking: bool) -> HidResult<()> {
+        self.blocking = blocking;
+        Ok(())
     }
 
     pub fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
