@@ -3,6 +3,7 @@
 extern crate udev;
 
 use std::{
+    cell::{Ref, RefCell},
     ffi::{CStr, CString, OsStr, OsString},
     fs::{File, OpenOptions},
     io::prelude::*,
@@ -10,6 +11,7 @@ use std::{
         fd::AsRawFd,
         unix::{ffi::OsStringExt, fs::OpenOptionsExt},
     },
+    path::PathBuf,
 };
 
 use nix::{
@@ -217,7 +219,9 @@ ioctl_readwrite_buf!(
 
 /// Object for accessing the HID device
 pub struct HidDevice {
+    path: PathBuf,
     file: File,
+    info: RefCell<Option<DeviceInfo>>,
 }
 
 unsafe impl Send for HidDevice {}
@@ -258,7 +262,11 @@ impl HidDevice {
         };
 
         // TODO: maybe add that ioctl check that the C version has
-        Ok(Self { file })
+        Ok(Self {
+            path: path.into(),
+            file,
+            info: RefCell::new(None),
+        })
     }
 }
 
@@ -366,23 +374,49 @@ impl HidDevice {
     }
 
     pub fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
-        todo!()
+        let info = self.info()?;
+        Ok(info.manufacturer_string().map(str::to_string))
     }
 
     pub fn get_product_string(&self) -> HidResult<Option<String>> {
-        todo!()
+        let info = self.info()?;
+        Ok(info.product_string().map(str::to_string))
     }
 
     pub fn get_serial_number_string(&self) -> HidResult<Option<String>> {
-        todo!()
+        let info = self.info()?;
+        Ok(info.serial_number().map(str::to_string))
     }
 
-    pub fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
-        todo!()
+    pub fn get_indexed_string(&self, _index: i32) -> HidResult<Option<String>> {
+        Err(HidError::HidApiError {
+            message: format!("get_indexed_string: not supported"),
+        })
     }
 
     pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
-        todo!()
+        let device = match udev::Device::from_syspath(&self.path) {
+            Ok(device) => device,
+            Err(e) => {
+                return Err(HidError::HidApiError {
+                    message: format!("{e}"),
+                });
+            }
+        };
+
+        device_to_hid_device_info(&device).ok_or(HidError::HidApiError {
+            message: format!("failed to create device info"),
+        })
+    }
+
+    fn info(&self) -> HidResult<Ref<DeviceInfo>> {
+        if self.info.borrow().is_none() {
+            let info = self.get_device_info()?;
+            self.info.replace(Some(info));
+        }
+
+        let info = self.info.borrow();
+        Ok(Ref::map(info, |i: &Option<DeviceInfo>| i.as_ref().unwrap()))
     }
 }
 
