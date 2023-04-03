@@ -21,7 +21,7 @@ use nix::{
     unistd::{read, write},
 };
 
-use super::{BusType, DeviceInfo, HidError, HidResult, WcharString};
+use super::{BusType, DeviceInfo, HidDeviceBackend, HidError, HidResult, WcharString};
 
 /// Global error to simulate what C hidapi does
 static GLOBAL_ERROR: Mutex<RefCell<Option<String>>> = Mutex::new(RefCell::new(None));
@@ -361,11 +361,20 @@ impl HidDevice {
         self.err.replace(Some(error.clone()));
         Err(HidError::HidApiError { message: error })
     }
+
+    fn info(&self) -> HidResult<Ref<DeviceInfo>> {
+        if self.info.borrow().is_none() {
+            let info = self.get_device_info()?;
+            self.info.replace(Some(info));
+        }
+
+        let info = self.info.borrow();
+        Ok(Ref::map(info, |i: &Option<DeviceInfo>| i.as_ref().unwrap()))
+    }
 }
 
-// Public API for users
-impl HidDevice {
-    pub fn check_error(&self) -> HidResult<HidError> {
+impl HidDeviceBackend for HidDevice {
+    fn check_error(&self) -> HidResult<HidError> {
         let borrow = self.err.borrow();
         let msg = match borrow.as_ref() {
             Some(s) => s,
@@ -377,7 +386,7 @@ impl HidDevice {
         })
     }
 
-    pub fn write(&self, data: &[u8]) -> HidResult<usize> {
+    fn write(&self, data: &[u8]) -> HidResult<usize> {
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
@@ -388,13 +397,13 @@ impl HidDevice {
         }
     }
 
-    pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
+    fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
         // If the caller asked for blocking, -1 makes us wait forever
         let timeout = if self.blocking.get() { -1 } else { 0 };
         self.read_timeout(buf, timeout)
     }
 
-    pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
+    fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
         self.clear_error();
 
         let pollfd = PollFd::new(self.fd.as_raw_fd(), PollFlags::POLLIN);
@@ -419,7 +428,7 @@ impl HidDevice {
         }
     }
 
-    pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
+    fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
         self.clear_error();
 
         if data.is_empty() {
@@ -448,7 +457,7 @@ impl HidDevice {
         Ok(())
     }
 
-    pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
+    fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
         self.clear_error();
 
         let res = match unsafe { hidraw_ioc_get_feature(self.fd.as_raw_fd(), buf) } {
@@ -462,33 +471,27 @@ impl HidDevice {
         Ok(res)
     }
 
-    pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
+    fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
         self.blocking.set(blocking);
         Ok(())
     }
 
-    pub fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
+    fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
         let info = self.info()?;
         Ok(info.manufacturer_string().map(str::to_string))
     }
 
-    pub fn get_product_string(&self) -> HidResult<Option<String>> {
+    fn get_product_string(&self) -> HidResult<Option<String>> {
         let info = self.info()?;
         Ok(info.product_string().map(str::to_string))
     }
 
-    pub fn get_serial_number_string(&self) -> HidResult<Option<String>> {
+    fn get_serial_number_string(&self) -> HidResult<Option<String>> {
         let info = self.info()?;
         Ok(info.serial_number().map(str::to_string))
     }
 
-    pub fn get_indexed_string(&self, _index: i32) -> HidResult<Option<String>> {
-        Err(HidError::HidApiError {
-            message: "get_indexed_string: not supported".into(),
-        })
-    }
-
-    pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
+    fn get_device_info(&self) -> HidResult<DeviceInfo> {
         self.clear_error();
 
         let device = udev::Device::from_syspath(&self.path)?;
@@ -496,16 +499,6 @@ impl HidDevice {
             Some(info) => Ok(info),
             None => self.register_error("failed to create device info".into()),
         }
-    }
-
-    fn info(&self) -> HidResult<Ref<DeviceInfo>> {
-        if self.info.borrow().is_none() {
-            let info = self.get_device_info()?;
-            self.info.replace(Some(info));
-        }
-
-        let info = self.info.borrow();
-        Ok(Ref::map(info, |i: &Option<DeviceInfo>| i.as_ref().unwrap()))
     }
 }
 

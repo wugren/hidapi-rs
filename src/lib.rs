@@ -90,12 +90,12 @@ pub use error::HidError;
 
 #[cfg(not(linuxudev))]
 use hidapi::HidApiBackend;
-#[cfg(not(linuxudev))]
-pub use hidapi::HidDevice;
+// #[cfg(not(linuxudev))]
+// pub use hidapi::HidDevice;
 #[cfg(linuxudev)]
 use linux_udev::HidApiBackend;
-#[cfg(linuxudev)]
-pub use linux_udev::HidDevice;
+// #[cfg(linuxudev)]
+// pub use linux_udev::HidDevice;
 
 pub type HidResult<T> = Result<T, HidError>;
 
@@ -208,20 +208,23 @@ impl HidApi {
     /// first one found in the internal device list will be used. There are however
     /// no guarantees, which device this will be.
     pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
-        HidApiBackend::open(vid, pid)
+        let dev = HidApiBackend::open(vid, pid)?;
+        Ok(HidDevice::from_backend(Box::new(dev)))
     }
 
     /// Open a HID device using a Vendor ID (VID), Product ID (PID) and
     /// a serial number.
     pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
-        HidApiBackend::open_serial(vid, pid, sn)
+        let dev = HidApiBackend::open_serial(vid, pid, sn)?;
+        Ok(HidDevice::from_backend(Box::new(dev)))
     }
 
     /// The path name be determined by inspecting the device list available with [HidApi::devices()](struct.HidApi.html#method.devices)
     ///
     /// Alternatively a platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
     pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
-        HidApiBackend::open_path(device_path)
+        let dev = HidApiBackend::open_path(device_path)?;
+        Ok(HidDevice::from_backend(Box::new(dev)))
     }
 
     /// Open a HID device using libusb_wrap_sys_device.
@@ -412,5 +415,137 @@ impl fmt::Debug for DeviceInfo {
             .field("vendor_id", &self.vendor_id)
             .field("product_id", &self.product_id)
             .finish()
+    }
+}
+
+/// Trait which the different backends must implement
+trait HidDeviceBackend {
+    fn check_error(&self) -> HidResult<HidError>;
+    fn write(&self, data: &[u8]) -> HidResult<usize>;
+    fn read(&self, buf: &mut [u8]) -> HidResult<usize>;
+    fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize>;
+    fn send_feature_report(&self, data: &[u8]) -> HidResult<()>;
+    fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize>;
+    fn set_blocking_mode(&self, blocking: bool) -> HidResult<()>;
+    fn get_device_info(&self) -> HidResult<DeviceInfo>;
+    fn get_manufacturer_string(&self) -> HidResult<Option<String>>;
+    fn get_product_string(&self) -> HidResult<Option<String>>;
+    fn get_serial_number_string(&self) -> HidResult<Option<String>>;
+
+    fn get_indexed_string(&self, _index: i32) -> HidResult<Option<String>> {
+        Err(HidError::HidApiError {
+            message: "get_indexed_string: not supported".to_string(),
+        })
+    }
+}
+
+pub struct HidDevice {
+    inner: Box<dyn HidDeviceBackend>,
+}
+
+impl HidDevice {
+    fn from_backend(inner: Box<dyn HidDeviceBackend>) -> Self {
+        Self { inner }
+    }
+}
+
+// Methods that use the backend
+impl HidDevice {
+    /// Get the last error, which happened in the underlying hidapi C library.
+    ///
+    /// The `Ok()` variant of the result will contain a [HidError::HidApiError](enum.HidError.html).
+    ///
+    /// When `Err()` is returned, then acquiring the error string from the hidapi C
+    /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
+    /// be fetched.
+    pub fn check_error(&self) -> HidResult<HidError> {
+        self.inner.check_error()
+    }
+
+    /// The first byte of `data` must contain the Report ID. For
+    /// devices which only support a single report, this must be set
+    /// to 0x0. The remaining bytes contain the report data. Since
+    /// the Report ID is mandatory, calls to `write()` will always
+    /// contain one more byte than the report contains. For example,
+    /// if a hid report is 16 bytes long, 17 bytes must be passed to
+    /// `write()`, the Report ID (or 0x0, for devices with a
+    /// single report), followed by the report data (16 bytes). In
+    /// this example, the length passed in would be 17.
+    /// `write()` will send the data on the first OUT endpoint, if
+    /// one exists. If it does not, it will send the data through
+    /// the Control Endpoint (Endpoint 0).
+    pub fn write(&self, data: &[u8]) -> HidResult<usize> {
+        self.inner.write(data)
+    }
+
+    /// Input reports are returned to the host through the 'INTERRUPT IN'
+    /// endpoint. The first byte will contain the Report number if the device
+    /// uses numbered reports.
+    pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
+        self.inner.read(buf)
+    }
+
+    /// Input reports are returned to the host through the 'INTERRUPT IN'
+    /// endpoint. The first byte will contain the Report number if the device
+    /// uses numbered reports. Timeout measured in milliseconds, set -1 for
+    /// blocking wait.
+    pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
+        self.inner.read_timeout(buf, timeout)
+    }
+
+    /// Send a Feature report to the device.
+    /// Feature reports are sent over the Control endpoint as a
+    /// Set_Report transfer.  The first byte of `data` must contain the
+    /// 'Report ID'. For devices which only support a single report, this must
+    /// be set to 0x0. The remaining bytes contain the report data. Since the
+    /// 'Report ID' is mandatory, calls to `send_feature_report()` will always
+    /// contain one more byte than the report contains. For example, if a hid
+    /// report is 16 bytes long, 17 bytes must be passed to
+    /// `send_feature_report()`: 'the Report ID' (or 0x0, for devices which
+    /// do not use numbered reports), followed by the report data (16 bytes).
+    /// In this example, the length passed in would be 17.
+    pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
+        self.inner.send_feature_report(data)
+    }
+
+    /// Set the first byte of `buf` to the 'Report ID' of the report to be read.
+    /// Upon return, the first byte will still contain the Report ID, and the
+    /// report data will start in `buf[1]`.
+    pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
+        self.inner.get_feature_report(buf)
+    }
+
+    /// Set the device handle to be in blocking or in non-blocking mode. In
+    /// non-blocking mode calls to `read()` will return immediately with an empty
+    /// slice if there is no data to be read. In blocking mode, `read()` will
+    /// wait (block) until there is data to read before returning.
+    /// Modes can be changed at any time.
+    pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
+        self.inner.set_blocking_mode(blocking)
+    }
+
+    /// Get The Manufacturer String from a HID device.
+    pub fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
+        self.inner.get_manufacturer_string()
+    }
+
+    /// Get The Manufacturer String from a HID device.
+    pub fn get_product_string(&self) -> HidResult<Option<String>> {
+        self.inner.get_product_string()
+    }
+
+    /// Get The Serial Number String from a HID device.
+    pub fn get_serial_number_string(&self) -> HidResult<Option<String>> {
+        self.inner.get_serial_number_string()
+    }
+
+    /// Get a string from a HID device, based on its string index.
+    pub fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
+        self.inner.get_indexed_string(index)
+    }
+
+    /// Get [`DeviceInfo`] from a HID device.
+    pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
+        self.inner.get_device_info()
     }
 }
