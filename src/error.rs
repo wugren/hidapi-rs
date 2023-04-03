@@ -50,3 +50,20 @@ impl Display for HidError {
 }
 
 impl Error for HidError {}
+
+impl From<std::io::Error> for HidError {
+    fn from(e: std::io::Error) -> Self {
+        Self::HidApiError {
+            message: format!("{e}"),
+        }
+    }
+}
+
+#[cfg(linuxudev)]
+impl From<nix::errno::Errno> for HidError {
+    fn from(e: nix::errno::Errno) -> Self {
+        Self::HidApiError {
+            message: format!("{e}"),
+        }
+    }
+}

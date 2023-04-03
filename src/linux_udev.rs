@@ -248,19 +248,11 @@ impl HidDevice {
     pub(crate) fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         // Paths on Linux can be anything but devnode paths are going to be ASCII
         let path = device_path.to_str().expect("path must be utf-8");
-        let file = match OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
-            .open(path)
-        {
-            Ok(f) => f,
-            Err(e) => {
-                return Err(HidError::HidApiError {
-                    message: format!("{e}"),
-                });
-            }
-        };
+            .open(path)?;
 
         // TODO: maybe add that ioctl check that the C version has
         Ok(Self {
@@ -279,12 +271,7 @@ impl HidDevice {
     }
 
     pub fn write(&mut self, data: &[u8]) -> HidResult<usize> {
-        match self.file.write(data) {
-            Ok(w) => Ok(w),
-            Err(e) => Err(HidError::HidApiError {
-                message: format!("{e}"),
-            }),
-        }
+        Ok(self.file.write(data)?)
     }
 
     pub fn read(&mut self, buf: &mut [u8]) -> HidResult<usize> {
@@ -295,14 +282,7 @@ impl HidDevice {
 
     pub fn read_timeout(&mut self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
         let pollfd = PollFd::new(self.file.as_raw_fd(), PollFlags::POLLIN);
-        let res = match poll(&mut [pollfd], timeout) {
-            Ok(n) => n,
-            Err(e) => {
-                return Err(HidError::HidApiError {
-                    message: format!("{e}"),
-                })
-            }
-        };
+        let res = poll(&mut [pollfd], timeout)?;
 
         if res == 0 {
             return Ok(0);
@@ -319,12 +299,7 @@ impl HidDevice {
         }
 
         // This is not quite the same error handling as the C library
-        match self.file.read(buf) {
-            Ok(w) => Ok(w),
-            Err(e) => Err(HidError::HidApiError {
-                message: format!("{e}"),
-            }),
-        }
+        Ok(self.file.read(buf)?)
     }
 
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
@@ -395,15 +370,7 @@ impl HidDevice {
     }
 
     pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
-        let device = match udev::Device::from_syspath(&self.path) {
-            Ok(device) => device,
-            Err(e) => {
-                return Err(HidError::HidApiError {
-                    message: format!("{e}"),
-                });
-            }
-        };
-
+        let device = udev::Device::from_syspath(&self.path)?;
         device_to_hid_device_info(&device).ok_or(HidError::HidApiError {
             message: format!("failed to create device info"),
         })
