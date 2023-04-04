@@ -5,12 +5,13 @@ extern crate udev;
 use std::{
     cell::{Cell, Ref, RefCell},
     ffi::{CStr, CString, OsStr, OsString},
-    fs::OpenOptions,
+    fs::{File, OpenOptions},
+    io::Read,
     os::{
         fd::{AsRawFd, OwnedFd},
         unix::{ffi::OsStringExt, fs::OpenOptionsExt},
     },
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Mutex,
 };
 
@@ -208,6 +209,174 @@ fn fill_in_usb(device: &udev::Device, info: DeviceInfo, name: &OsStr) -> DeviceI
         product_string,
         interface_number,
         ..info
+    }
+}
+
+// From linux/hid.h
+const HID_MAX_DESCRIPTOR_SIZE: usize = 4096;
+
+// From linux/hidraw.h
+struct HidrawReportDescriptor {
+    size: u32,
+    value: [u8; HID_MAX_DESCRIPTOR_SIZE],
+}
+
+impl Default for HidrawReportDescriptor {
+    fn default() -> Self {
+        Self {
+            size: 0,
+            value: [0u8; HID_MAX_DESCRIPTOR_SIZE],
+        }
+    }
+}
+
+impl HidrawReportDescriptor {
+    /// Open and parse given the "base" sysfs of the device
+    pub fn from_syspath(syspath: &Path) -> HidResult<Self> {
+        let mut descriptor = HidrawReportDescriptor::default();
+
+        let path = syspath.join("device/report_descriptor");
+        let mut f = File::open(path)?;
+        let len = f.read(&mut descriptor.value)?;
+        descriptor.size = len as u32;
+
+        Ok(descriptor)
+    }
+
+    pub fn usages(&self) -> impl Iterator<Item = (u16, u16)> + '_ {
+        UsageIterator {
+            pos: 0,
+            usage_page: 0,
+            value: &self.value,
+        }
+    }
+}
+
+/// Iterates over the values in a HidrawReportDescriptor
+struct UsageIterator<'a> {
+    pos: usize,
+    usage_page: u16,
+    value: &'a [u8],
+}
+
+impl<'a> Iterator for UsageIterator<'a> {
+    type Item = (u16, u16);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (usage_page, page, new_pos) =
+            match next_hid_usage(self.value, self.pos, self.usage_page) {
+                Some(n) => n,
+                None => return None,
+            };
+
+        self.usage_page = usage_page;
+        self.pos = new_pos;
+        Some((usage_page, page))
+    }
+}
+
+// This comes from hidapi which apparently comes from Apple's implementation of
+// this
+fn next_hid_usage(desc: &[u8], mut pos: usize, mut usage_page: u16) -> Option<(u16, u16, usize)> {
+    let initial = pos == 0;
+    let mut usage = None;
+    let mut usage_pair = None;
+
+    while pos < desc.len() {
+        let key = desc[pos];
+        let key_cmd = key & 0xfc;
+
+        let (data_len, key_size) = match hid_item_size(desc, pos) {
+            Some(v) => v,
+            None => return None,
+        };
+
+        match key_cmd {
+            // Usage Page 6.2.2.7 (Global)
+            0x4 => {
+                usage_page = hid_report_bytes(desc, data_len, pos) as u16;
+            }
+            // Usage 6.2.2.8 (Local)
+            0x8 => {
+                usage = Some(hid_report_bytes(desc, data_len, pos) as u16);
+            }
+            // Collection 6.2.2.4 (Main)
+            0xa0 => {
+                // Usage is a Local Item, unset it
+                if let Some(u) = usage.take() {
+                    usage_pair = Some((usage_page, u))
+                }
+            }
+            // Input 6.2.2.4 (Main)
+		        0x80 |
+            // Output 6.2.2.4 (Main)
+		        0x90 |
+            // Feature 6.2.2.4 (Main)
+		        0xb0 |
+            // End Collection 6.2.2.4 (Main)
+		        0xc0  =>  {
+			          // Usage is a Local Item, unset it
+                usage.take();
+            }
+            _ => {}
+        }
+
+        pos += data_len + key_size;
+        if let Some((usage_page, usage)) = usage_pair {
+            return Some((usage_page, usage, pos));
+        }
+    }
+
+    if let (true, Some(usage)) = (initial, usage) {
+        return Some((usage_page, usage, pos));
+    }
+
+    None
+}
+
+/// Gets the size of the HID item at the given position
+///
+/// Returns data_len and key_size when successful
+fn hid_item_size(desc: &[u8], pos: usize) -> Option<(usize, usize)> {
+    let key = desc[pos];
+
+    // Long Item. Next byte contains the length of the data section.
+    if (key & 0xf0) == 0xf0 {
+        if pos + 1 < desc.len() {
+            return Some((desc[pos + 1].into(), 3));
+        }
+
+        // Malformed report
+        return None;
+    }
+
+    // Short Item. Bottom two bits contains the size code
+    match key & 0x03 {
+        v @ 0 | v @ 1 | v @ 2 => Some((v.into(), 1)),
+        3 => Some((4, 1)),
+        _ => unreachable!(), // & 0x03 means this can't happen
+    }
+}
+
+/// Get the bytes from a HID report descriptor
+///
+/// Must only be called with `num_bytes` 0, 1, 2 or 4.
+fn hid_report_bytes(desc: &[u8], num_bytes: usize, pos: usize) -> u32 {
+    if pos + num_bytes >= desc.len() {
+        return 0;
+    }
+
+    match num_bytes {
+        0 => 0,
+        1 => desc[pos + 1] as u32,
+        2 => desc[pos + 2] as u32 * 256_u32 + desc[pos + 1] as u32,
+        4 => {
+            (desc[pos + 4] as u32 * 0x01000000)
+                + (desc[pos + 3] as u32 * 0x00010000)
+                + (desc[pos + 2] as u32 * 0x00000100)
+                + (desc[pos + 1] as u32 * 0x00000001)
+        }
+        _ => unreachable!(),
     }
 }
 
