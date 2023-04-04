@@ -5,10 +5,9 @@ extern crate udev;
 use std::{
     cell::{Cell, Ref, RefCell},
     ffi::{CStr, CString, OsStr, OsString},
-    fs::{File, OpenOptions},
-    io::prelude::*,
+    fs::OpenOptions,
     os::{
-        fd::AsRawFd,
+        fd::{AsRawFd, OwnedFd},
         unix::{ffi::OsStringExt, fs::OpenOptionsExt},
     },
     path::PathBuf,
@@ -16,8 +15,10 @@ use std::{
 };
 
 use nix::{
+    errno::Errno,
     ioctl_readwrite_buf,
     poll::{poll, PollFd, PollFlags},
+    unistd::{read, write},
 };
 
 use super::{BusType, DeviceInfo, HidError, HidResult, WcharString};
@@ -283,7 +284,7 @@ ioctl_readwrite_buf!(
 pub struct HidDevice {
     path: PathBuf,
     blocking: Cell<bool>,
-    file: RefCell<File>,
+    fd: OwnedFd,
     info: RefCell<Option<DeviceInfo>>,
     err: RefCell<Option<String>>,
 }
@@ -325,7 +326,7 @@ impl HidDevice {
         Ok(Self {
             path: path.into(),
             blocking: Cell::new(true),
-            file: RefCell::new(file),
+            fd: file.into(),
             info: RefCell::new(None),
             err: RefCell::new(None),
         })
@@ -360,7 +361,11 @@ impl HidDevice {
     }
 
     pub fn write(&self, data: &[u8]) -> HidResult<usize> {
-        match self.file.borrow_mut().write(data) {
+        if data.is_empty() {
+            return Err(HidError::InvalidZeroSizeData);
+        }
+
+        match write(self.fd.as_raw_fd(), data) {
             Ok(w) => Ok(w),
             Err(e) => self.register_error(e.to_string()),
         }
@@ -375,7 +380,7 @@ impl HidDevice {
     pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
         self.clear_error();
 
-        let pollfd = PollFd::new(self.file.borrow().as_raw_fd(), PollFlags::POLLIN);
+        let pollfd = PollFd::new(self.fd.as_raw_fd(), PollFlags::POLLIN);
         let res = poll(&mut [pollfd], timeout)?;
 
         if res == 0 {
@@ -390,9 +395,9 @@ impl HidDevice {
             return self.register_error("unexpected poll error (device disconnected)".into());
         }
 
-        // This is not quite the same error handling as the C library
-        match self.file.borrow_mut().read(buf) {
+        match read(self.fd.as_raw_fd(), buf) {
             Ok(w) => Ok(w),
+            Err(Errno::EAGAIN) | Err(Errno::EINPROGRESS) => Ok(0),
             Err(e) => self.register_error(e.to_string()),
         }
     }
@@ -407,10 +412,7 @@ impl HidDevice {
         // The ioctl is marked as read-write so we need to mess with the
         // mutability even though nothing should get written
         let res = match unsafe {
-            hidraw_ioc_set_feature(
-                self.file.borrow().as_raw_fd(),
-                &mut *(data as *const _ as *mut _),
-            )
+            hidraw_ioc_set_feature(self.fd.as_raw_fd(), &mut *(data as *const _ as *mut _))
         } {
             Ok(n) => n as usize,
             Err(e) => {
@@ -432,7 +434,7 @@ impl HidDevice {
     pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
         self.clear_error();
 
-        let res = match unsafe { hidraw_ioc_get_feature(self.file.borrow().as_raw_fd(), buf) } {
+        let res = match unsafe { hidraw_ioc_get_feature(self.fd.as_raw_fd(), buf) } {
             Ok(n) => n as usize,
             Err(e) => {
                 let s = format!("ioctl (GFEATURE): {e}");
