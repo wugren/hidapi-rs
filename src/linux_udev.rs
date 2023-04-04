@@ -223,11 +223,12 @@ pub struct HidDevice {
     blocking: Cell<bool>,
     file: RefCell<File>,
     info: RefCell<Option<DeviceInfo>>,
+    err: RefCell<Option<String>>,
 }
 
 unsafe impl Send for HidDevice {}
 
-// API for the library to call us
+// API for the library to call us, or for internal uses
 impl HidDevice {
     pub(crate) fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<Self> {
         // TODO: fix this up so we don't copy the serial number
@@ -260,18 +261,43 @@ impl HidDevice {
             blocking: Cell::new(true),
             file: RefCell::new(file),
             info: RefCell::new(None),
+            err: RefCell::new(None),
         })
+    }
+
+    /// Remove the error string for this device
+    fn clear_error(&self) {
+        self.err.take();
+    }
+
+    /// Set the error string for the device.
+    ///
+    /// For convenience it returns the error.
+    fn register_error<T>(&self, error: String) -> HidResult<T> {
+        self.err.replace(Some(error.clone()));
+        Err(HidError::HidApiError { message: error })
     }
 }
 
 // Public API for users
 impl HidDevice {
     pub fn check_error(&self) -> HidResult<HidError> {
-        todo!()
+        let borrow = self.err.borrow();
+        let msg = match borrow.as_ref() {
+            Some(s) => s,
+            None => "Success",
+        };
+
+        Ok(HidError::HidApiError {
+            message: msg.to_string(),
+        })
     }
 
     pub fn write(&self, data: &[u8]) -> HidResult<usize> {
-        Ok(self.file.borrow_mut().write(data)?)
+        match self.file.borrow_mut().write(data) {
+            Ok(w) => Ok(w),
+            Err(e) => self.register_error(e.to_string()),
+        }
     }
 
     pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
@@ -281,6 +307,8 @@ impl HidDevice {
     }
 
     pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
+        self.clear_error();
+
         let pollfd = PollFd::new(self.file.borrow().as_raw_fd(), PollFlags::POLLIN);
         let res = poll(&mut [pollfd], timeout)?;
 
@@ -293,16 +321,19 @@ impl HidDevice {
             .map(|e| e.intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL));
 
         if events.is_none() || events == Some(true) {
-            return Err(HidError::HidApiError {
-                message: format!("unexpected poll error (device disconnected)"),
-            });
+            return self.register_error("unexpected poll error (device disconnected)".into());
         }
 
         // This is not quite the same error handling as the C library
-        Ok(self.file.borrow_mut().read(buf)?)
+        match self.file.borrow_mut().read(buf) {
+            Ok(w) => Ok(w),
+            Err(e) => self.register_error(e.to_string()),
+        }
     }
 
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
+        self.clear_error();
+
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
@@ -317,9 +348,8 @@ impl HidDevice {
         } {
             Ok(n) => n as usize,
             Err(e) => {
-                return Err(HidError::HidApiError {
-                    message: format!("ioctl (SFEATURE): {e}"),
-                })
+                let s = format!("ioctl (GFEATURE): {e}");
+                return self.register_error(s);
             }
         };
 
@@ -334,12 +364,13 @@ impl HidDevice {
     }
 
     pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
+        self.clear_error();
+
         let res = match unsafe { hidraw_ioc_get_feature(self.file.borrow().as_raw_fd(), buf) } {
             Ok(n) => n as usize,
             Err(e) => {
-                return Err(HidError::HidApiError {
-                    message: format!("ioctl (GFEATURE): {e}"),
-                })
+                let s = format!("ioctl (GFEATURE): {e}");
+                return self.register_error(s);
             }
         };
 
@@ -368,15 +399,18 @@ impl HidDevice {
 
     pub fn get_indexed_string(&self, _index: i32) -> HidResult<Option<String>> {
         Err(HidError::HidApiError {
-            message: format!("get_indexed_string: not supported"),
+            message: "get_indexed_string: not supported".into(),
         })
     }
 
     pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
+        self.clear_error();
+
         let device = udev::Device::from_syspath(&self.path)?;
-        device_to_hid_device_info(&device).ok_or(HidError::HidApiError {
-            message: format!("failed to create device info"),
-        })
+        match device_to_hid_device_info(&device) {
+            Some(info) => Ok(info),
+            None => self.register_error("failed to create device info".into()),
+        }
     }
 
     fn info(&self) -> HidResult<Ref<DeviceInfo>> {
