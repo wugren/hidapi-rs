@@ -16,7 +16,7 @@ use std::{
 
 use nix::{
     errno::Errno,
-    ioctl_readwrite_buf,
+    ioctl_read, ioctl_readwrite_buf,
     poll::{poll, PollFd, PollFlags},
     unistd::{read, write},
 };
@@ -264,8 +264,16 @@ fn parse_hid_vid_pid(s: &str) -> Option<(u16, u16, u16)> {
 
 // From linux/hidraw.h
 const HIDRAW_IOC_MAGIC: u8 = b'H';
+const HIDRAW_IOC_GRDESCSIZE: u8 = 0x01;
 const HIDRAW_SET_FEATURE: u8 = 0x06;
 const HIDRAW_GET_FEATURE: u8 = 0x07;
+
+ioctl_read!(
+    hidraw_ioc_grdescsize,
+    HIDRAW_IOC_MAGIC,
+    HIDRAW_IOC_GRDESCSIZE,
+    i32
+);
 
 ioctl_readwrite_buf!(
     hidraw_ioc_set_feature,
@@ -312,21 +320,30 @@ impl HidDevice {
 
         // Paths on Linux can be anything but devnode paths are going to be ASCII
         let path = device_path.to_str().expect("path must be utf-8");
-        let file = match OpenOptions::new()
+        let fd: OwnedFd = match OpenOptions::new()
             .read(true)
             .write(true)
             .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
             .open(path)
         {
-            Ok(f) => f,
-            Err(e) => return register_global_error(e.to_string()),
+            Ok(f) => f.into(),
+            Err(e) => {
+                return register_global_error(format!(
+                    "failed to open device with path {path}: {e}"
+                ))
+            }
         };
 
-        // TODO: maybe add that ioctl check that the C version has
+        let mut size = 0_i32;
+        if let Err(e) = unsafe { hidraw_ioc_grdescsize(fd.as_raw_fd(), &mut size) } {
+            let error = format!("ioctl(GRDESCSIZE) error for {path}, not a HIDRAW device?: {e}");
+            return register_global_error(error);
+        }
+
         Ok(Self {
             path: path.into(),
             blocking: Cell::new(true),
-            fd: file.into(),
+            fd,
             info: RefCell::new(None),
             err: RefCell::new(None),
         })
