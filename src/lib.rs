@@ -154,9 +154,7 @@ impl HidApi {
 
         let device_list = unsafe { HidApi::get_hid_device_info_vector()? };
 
-        Ok(HidApi {
-            device_list: device_list.clone(),
-        })
+        Ok(HidApi { device_list })
     }
 
     /// Create a new hidapi context, in "do not enumerate" mode.
@@ -179,7 +177,7 @@ impl HidApi {
     /// `device_list()` method)
     pub fn refresh_devices(&mut self) -> HidResult<()> {
         let device_list = unsafe { HidApi::get_hid_device_info_vector()? };
-        self.device_list = device_list.clone();
+        self.device_list = device_list;
         Ok(())
     }
 
