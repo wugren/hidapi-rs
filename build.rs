@@ -51,6 +51,7 @@ fn compile_linux() {
             "LINUX_STATIC_HIDRAW",
             Box::new(|| {
                 let mut config = cc::Build::new();
+                println!("cargo:rerun-if-changed=etc/hidapi/linux/hid.c");
                 config
                     .file("etc/hidapi/linux/hid.c")
                     .include("etc/hidapi/hidapi");
@@ -62,6 +63,7 @@ fn compile_linux() {
             "LINUX_STATIC_LIBUSB",
             Box::new(|| {
                 let mut config = cc::Build::new();
+                println!("cargo:rerun-if-changed=etc/hidapi/linux/hid.c");
                 config
                     .file("etc/hidapi/libusb/hid.c")
                     .include("etc/hidapi/hidapi");
