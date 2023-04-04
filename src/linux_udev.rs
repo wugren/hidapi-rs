@@ -12,6 +12,7 @@ use std::{
         unix::{ffi::OsStringExt, fs::OpenOptionsExt},
     },
     path::PathBuf,
+    sync::Mutex,
 };
 
 use nix::{
@@ -21,27 +22,88 @@ use nix::{
 
 use super::{BusType, DeviceInfo, HidError, HidResult, WcharString};
 
-/// Enumerate the hidraw devices
-pub fn enumerate_devices() -> HidResult<Vec<DeviceInfo>> {
-    // This matches what we do with ffi:hid_enumerate but it's not great
-    let mut enumerator = match udev::Enumerator::new() {
-        Ok(e) => e,
-        Err(_) => return Ok(Vec::new()),
-    };
-    enumerator.match_subsystem("hidraw").unwrap();
-    let scan = match enumerator.scan_devices() {
-        Ok(s) => s,
-        Err(_) => return Ok(Vec::new()),
-    };
+/// Global error to simulate what C hidapi does
+static GLOBAL_ERROR: Mutex<RefCell<Option<String>>> = Mutex::new(RefCell::new(None));
 
-    let mut devices = Vec::new();
-    for device in scan {
-        if let Some(device) = device_to_hid_device_info(&device) {
-            devices.push(device);
+/// Clear the global error
+fn clear_global_error() {
+    GLOBAL_ERROR.lock().expect("global error lock").take();
+}
+
+/// Register the global error
+///
+/// It returns an error with his string
+fn register_global_error<T>(error: String) -> HidResult<T> {
+    GLOBAL_ERROR
+        .lock()
+        .expect("global error lock")
+        .replace(Some(error));
+
+    Err(HidError::HidApiError {
+        message: "device not found".into(),
+    })
+}
+
+pub struct HidApiBackend;
+
+impl HidApiBackend {
+    pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
+        clear_global_error();
+
+        // The C version assumes these can't fail, and they should only fail in case
+        // of memory allocation issues, at which point maybe we should panic
+        let mut enumerator = match udev::Enumerator::new() {
+            Ok(e) => e,
+            Err(_) => return Ok(Vec::new()),
+        };
+        enumerator.match_subsystem("hidraw").unwrap();
+        let scan = match enumerator.scan_devices() {
+            Ok(s) => s,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let mut devices = Vec::new();
+        for device in scan {
+            if let Some(device) = device_to_hid_device_info(&device) {
+                devices.push(device);
+            }
         }
+
+        // What happens with the C hidapi is that it registers the error, returns
+        // NULL, but in this library we still end up returning Ok with an empty
+        // vector. So we do the same here.
+        #[allow(unused_must_use)]
+        if devices.is_empty() {
+            register_global_error::<()>("No HID devices found in the system".to_string());
+        }
+
+        Ok(devices)
     }
 
-    Ok(devices)
+    pub fn open(vid: u16, pid: u16) -> HidResult<HidDevice> {
+        HidDevice::open(vid, pid, None)
+    }
+
+    pub fn open_serial(vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
+        HidDevice::open(vid, pid, Some(sn))
+    }
+
+    pub fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
+        HidDevice::open_path(device_path)
+    }
+
+    pub fn check_error() -> HidResult<HidError> {
+        let error = GLOBAL_ERROR.lock().expect("global error lock");
+        let borrowed = error.borrow();
+        let msg = match borrowed.as_ref() {
+            Some(s) => s,
+            None => "Success",
+        };
+
+        Err(HidError::HidApiError {
+            message: msg.to_string(),
+        })
+    }
 }
 
 // Bus values from linux/input.h
@@ -233,7 +295,7 @@ impl HidDevice {
     pub(crate) fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<Self> {
         // TODO: fix this up so we don't copy the serial number
         let sn = sn.map(|s| WcharString::String(s.to_string()));
-        for device in enumerate_devices()? {
+        for device in HidApiBackend::get_hid_device_info_vector()? {
             if device.vendor_id == vid && device.product_id == pid {
                 if sn.is_none() || sn == Some(device.serial_number) {
                     return Self::open_path(&device.path);
@@ -241,19 +303,23 @@ impl HidDevice {
             }
         }
 
-        return Err(HidError::HidApiError {
-            message: "device not found".into(),
-        });
+        register_global_error("device not found".into())
     }
 
     pub(crate) fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
+        clear_global_error();
+
         // Paths on Linux can be anything but devnode paths are going to be ASCII
         let path = device_path.to_str().expect("path must be utf-8");
-        let file = OpenOptions::new()
+        let file = match OpenOptions::new()
             .read(true)
             .write(true)
             .custom_flags(libc::O_CLOEXEC | libc::O_NONBLOCK)
-            .open(path)?;
+            .open(path)
+        {
+            Ok(f) => f,
+            Err(e) => return register_global_error(e.to_string()),
+        };
 
         // TODO: maybe add that ioctl check that the C version has
         Ok(Self {

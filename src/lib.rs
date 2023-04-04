@@ -89,7 +89,11 @@ use std::sync::Mutex;
 pub use error::HidError;
 
 #[cfg(not(linuxudev))]
+use hidapi::HidApiBackend;
+#[cfg(not(linuxudev))]
 pub use hidapi::HidDevice;
+#[cfg(linuxudev)]
+use linux_udev::HidApiBackend;
 #[cfg(linuxudev)]
 pub use linux_udev::HidDevice;
 
@@ -164,7 +168,7 @@ impl HidApi {
     pub fn new() -> HidResult<Self> {
         lazy_init(true)?;
 
-        let device_list = HidApi::get_hid_device_info_vector()?;
+        let device_list = HidApiBackend::get_hid_device_info_vector()?;
 
         Ok(HidApi { device_list })
     }
@@ -188,36 +192,11 @@ impl HidApi {
     /// Refresh devices list and information about them (to access them use
     /// `device_list()` method)
     pub fn refresh_devices(&mut self) -> HidResult<()> {
-        let device_list = HidApi::get_hid_device_info_vector()?;
+        let device_list = HidApiBackend::get_hid_device_info_vector()?;
         self.device_list = device_list;
         Ok(())
     }
 
-    #[cfg(not(linuxudev))]
-    fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
-        let mut device_vector = Vec::with_capacity(8);
-
-        let enumeration = unsafe { ffi::hid_enumerate(0, 0) };
-        {
-            let mut current_device = enumeration;
-
-            while !current_device.is_null() {
-                device_vector.push(unsafe { hidapi::conv_hid_device_info(current_device)? });
-                current_device = unsafe { (*current_device).next };
-            }
-        }
-
-        if !enumeration.is_null() {
-            unsafe { ffi::hid_free_enumeration(enumeration) };
-        }
-
-        Ok(device_vector)
-    }
-
-    #[cfg(linuxudev)]
-    fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
-        linux_udev::enumerate_devices()
-    }
     /// Returns iterator containing information about attached HID devices.
     pub fn device_list(&self) -> impl Iterator<Item = &DeviceInfo> {
         self.device_list.iter()
@@ -228,67 +207,21 @@ impl HidApi {
     /// When multiple devices with the same vid and pid are available, then the
     /// first one found in the internal device list will be used. There are however
     /// no guarantees, which device this will be.
-    #[cfg(not(linuxudev))]
     pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
-        let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
-
-        if device.is_null() {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice::from_raw(device))
-        }
-    }
-
-    #[cfg(linuxudev)]
-    pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
-        HidDevice::open(vid, pid, None)
+        HidApiBackend::open(vid, pid)
     }
 
     /// Open a HID device using a Vendor ID (VID), Product ID (PID) and
     /// a serial number.
-    #[cfg(not(linuxudev))]
     pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
-        let mut chars = sn.chars().map(|c| c as wchar_t).collect::<Vec<_>>();
-        chars.push(0 as wchar_t);
-        let device = unsafe { ffi::hid_open(vid, pid, chars.as_ptr()) };
-        if device.is_null() {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice::from_raw(device))
-        }
-    }
-
-    #[cfg(linuxudev)]
-    pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
-        HidDevice::open(vid, pid, Some(sn))
+        HidApiBackend::open_serial(vid, pid, sn)
     }
 
     /// The path name be determined by inspecting the device list available with [HidApi::devices()](struct.HidApi.html#method.devices)
     ///
     /// Alternatively a platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
-    #[cfg(not(linuxudev))]
     pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
-        let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
-
-        if device.is_null() {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice::from_raw(device))
-        }
-    }
-
-    #[cfg(linuxudev)]
-    pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
-        HidDevice::open_path(device_path)
+        HidApiBackend::open_path(device_path)
     }
 
     /// Open a HID device using libusb_wrap_sys_device.
@@ -315,50 +248,7 @@ impl HidApi {
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
     pub fn check_error(&self) -> HidResult<HidError> {
-        Ok(HidError::HidApiError {
-            message: unsafe {
-                match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
-                    WcharString::String(s) => s,
-                    _ => return Err(HidError::HidApiErrorEmpty),
-                }
-            },
-        })
-    }
-}
-
-/// Converts a pointer to a `*const wchar_t` to a WcharString.
-unsafe fn wchar_to_string(wstr: *const wchar_t) -> WcharString {
-    if wstr.is_null() {
-        return WcharString::None;
-    }
-
-    let mut char_vector: Vec<char> = Vec::with_capacity(8);
-    let mut raw_vector: Vec<wchar_t> = Vec::with_capacity(8);
-    let mut index: isize = 0;
-    let mut invalid_char = false;
-
-    let o = |i| *wstr.offset(i);
-
-    while o(index) != 0 {
-        use std::char;
-
-        raw_vector.push(*wstr.offset(index));
-
-        if !invalid_char {
-            if let Some(c) = char::from_u32(o(index) as u32) {
-                char_vector.push(c);
-            } else {
-                invalid_char = true;
-            }
-        }
-
-        index += 1;
-    }
-
-    if !invalid_char {
-        WcharString::String(char_vector.into_iter().collect())
-    } else {
-        WcharString::Raw(raw_vector)
+        HidApiBackend::check_error()
     }
 }
 

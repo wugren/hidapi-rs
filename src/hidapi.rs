@@ -7,9 +7,120 @@ use std::{
 
 use libc::{c_int, size_t, wchar_t};
 
-use crate::{ffi, wchar_to_string, DeviceInfo, HidError, HidResult, WcharString};
+use crate::{ffi, DeviceInfo, HidError, HidResult, WcharString};
 
 const STRING_BUF_LEN: usize = 128;
+
+pub struct HidApiBackend;
+
+impl HidApiBackend {
+    pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
+        let mut device_vector = Vec::with_capacity(8);
+
+        let enumeration = unsafe { ffi::hid_enumerate(0, 0) };
+        {
+            let mut current_device = enumeration;
+
+            while !current_device.is_null() {
+                device_vector.push(unsafe { conv_hid_device_info(current_device)? });
+                current_device = unsafe { (*current_device).next };
+            }
+        }
+
+        if !enumeration.is_null() {
+            unsafe { ffi::hid_free_enumeration(enumeration) };
+        }
+
+        Ok(device_vector)
+    }
+
+    pub fn open(vid: u16, pid: u16) -> HidResult<HidDevice> {
+        let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
+
+        if device.is_null() {
+            match Self::check_error() {
+                Ok(err) => Err(err),
+                Err(e) => Err(e),
+            }
+        } else {
+            Ok(HidDevice::from_raw(device))
+        }
+    }
+
+    pub fn open_serial(vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
+        let mut chars = sn.chars().map(|c| c as wchar_t).collect::<Vec<_>>();
+        chars.push(0 as wchar_t);
+        let device = unsafe { ffi::hid_open(vid, pid, chars.as_ptr()) };
+        if device.is_null() {
+            match Self::check_error() {
+                Ok(err) => Err(err),
+                Err(e) => Err(e),
+            }
+        } else {
+            Ok(HidDevice::from_raw(device))
+        }
+    }
+
+    pub fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
+        let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
+
+        if device.is_null() {
+            match Self::check_error() {
+                Ok(err) => Err(err),
+                Err(e) => Err(e),
+            }
+        } else {
+            Ok(HidDevice::from_raw(device))
+        }
+    }
+
+    pub fn check_error() -> HidResult<HidError> {
+        Ok(HidError::HidApiError {
+            message: unsafe {
+                match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
+                    WcharString::String(s) => s,
+                    _ => return Err(HidError::HidApiErrorEmpty),
+                }
+            },
+        })
+    }
+}
+
+/// Converts a pointer to a `*const wchar_t` to a WcharString.
+unsafe fn wchar_to_string(wstr: *const wchar_t) -> WcharString {
+    if wstr.is_null() {
+        return WcharString::None;
+    }
+
+    let mut char_vector: Vec<char> = Vec::with_capacity(8);
+    let mut raw_vector: Vec<wchar_t> = Vec::with_capacity(8);
+    let mut index: isize = 0;
+    let mut invalid_char = false;
+
+    let o = |i| *wstr.offset(i);
+
+    while o(index) != 0 {
+        use std::char;
+
+        raw_vector.push(*wstr.offset(index));
+
+        if !invalid_char {
+            if let Some(c) = char::from_u32(o(index) as u32) {
+                char_vector.push(c);
+            } else {
+                invalid_char = true;
+            }
+        }
+
+        index += 1;
+    }
+
+    if !invalid_char {
+        WcharString::String(char_vector.into_iter().collect())
+    } else {
+        WcharString::Raw(raw_vector)
+    }
+}
 
 /// Convert the CFFI `HidDeviceInfo` struct to a native `HidDeviceInfo` struct
 pub unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidResult<DeviceInfo> {
