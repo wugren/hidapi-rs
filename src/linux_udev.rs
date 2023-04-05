@@ -154,6 +154,14 @@ fn device_to_hid_device_info(raw_device: &udev::Device) -> Option<DeviceInfo> {
         None | Some(Err(_)) => return None,
     };
 
+    // Get the first usage page and usage for our current DeviceInfo
+    let (usage_page, usage) = match HidrawReportDescriptor::from_syspath(raw_device.syspath())
+        .map(|d| d.usages().next())
+    {
+        Ok(Some(v)) => v,
+        _ => (0, 0),
+    };
+
     // Thus far we've gathered all the common attributes.
     let info = DeviceInfo {
         path,
@@ -163,8 +171,8 @@ fn device_to_hid_device_info(raw_device: &udev::Device) -> Option<DeviceInfo> {
         release_number: 0,
         manufacturer_string: WcharString::None,
         product_string: WcharString::None,
-        usage_page: 0,
-        usage: 0,
+        usage_page,
+        usage,
         interface_number: -1,
         bus_type,
     };
