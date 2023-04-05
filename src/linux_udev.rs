@@ -276,7 +276,7 @@ impl HidrawReportDescriptor {
 
     pub fn usages(&self) -> impl Iterator<Item = (u16, u16)> + '_ {
         UsageIterator {
-            pos: 0,
+            initial: true,
             usage_page: 0,
             value: &self.value,
         }
@@ -285,7 +285,7 @@ impl HidrawReportDescriptor {
 
 /// Iterates over the values in a HidrawReportDescriptor
 struct UsageIterator<'a> {
-    pos: usize,
+    initial: bool,
     usage_page: u16,
     value: &'a [u8],
 }
@@ -294,30 +294,35 @@ impl<'a> Iterator for UsageIterator<'a> {
     type Item = (u16, u16);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (usage_page, page, new_pos) =
-            match next_hid_usage(self.value, self.pos, self.usage_page) {
+        let (usage_page, page, advanced) =
+            match next_hid_usage(self.value, self.initial, self.usage_page) {
                 Some(n) => n,
                 None => return None,
             };
 
         self.usage_page = usage_page;
-        self.pos = new_pos;
+        self.initial = false;
+        self.value = &self.value[advanced..];
         Some((usage_page, page))
     }
 }
 
 // This comes from hidapi which apparently comes from Apple's implementation of
 // this
-fn next_hid_usage(desc: &[u8], mut pos: usize, mut usage_page: u16) -> Option<(u16, u16, usize)> {
-    let initial = pos == 0;
+fn next_hid_usage(
+    mut desc: &[u8],
+    initial: bool,
+    mut usage_page: u16,
+) -> Option<(u16, u16, usize)> {
     let mut usage = None;
     let mut usage_pair = None;
+    let mut advanced = 0_usize;
 
-    while pos < desc.len() {
-        let key = desc[pos];
+    while !desc.is_empty() {
+        let key = desc[0];
         let key_cmd = key & 0xfc;
 
-        let (data_len, key_size) = match hid_item_size(desc, pos) {
+        let (data_len, key_size) = match hid_item_size(desc) {
             Some(v) => v,
             None => return None,
         };
@@ -325,11 +330,11 @@ fn next_hid_usage(desc: &[u8], mut pos: usize, mut usage_page: u16) -> Option<(u
         match key_cmd {
             // Usage Page 6.2.2.7 (Global)
             0x4 => {
-                usage_page = hid_report_bytes(desc, data_len, pos) as u16;
+                usage_page = hid_report_bytes(desc, data_len) as u16;
             }
             // Usage 6.2.2.8 (Local)
             0x8 => {
-                usage = Some(hid_report_bytes(desc, data_len, pos) as u16);
+                usage = Some(hid_report_bytes(desc, data_len) as u16);
             }
             // Collection 6.2.2.4 (Main)
             0xa0 => {
@@ -352,14 +357,15 @@ fn next_hid_usage(desc: &[u8], mut pos: usize, mut usage_page: u16) -> Option<(u
             _ => {}
         }
 
-        pos += data_len + key_size;
+        advanced += data_len + key_size;
+        desc = &desc[(data_len + key_size)..];
         if let Some((usage_page, usage)) = usage_pair {
-            return Some((usage_page, usage, pos));
+            return Some((usage_page, usage, advanced));
         }
     }
 
     if let (true, Some(usage)) = (initial, usage) {
-        return Some((usage_page, usage, pos));
+        return Some((usage_page, usage, advanced));
     }
 
     None
@@ -368,13 +374,13 @@ fn next_hid_usage(desc: &[u8], mut pos: usize, mut usage_page: u16) -> Option<(u
 /// Gets the size of the HID item at the given position
 ///
 /// Returns data_len and key_size when successful
-fn hid_item_size(desc: &[u8], pos: usize) -> Option<(usize, usize)> {
-    let key = desc[pos];
+fn hid_item_size(desc: &[u8]) -> Option<(usize, usize)> {
+    let key = desc[0];
 
     // Long Item. Next byte contains the length of the data section.
     if (key & 0xf0) == 0xf0 {
-        if pos + 1 < desc.len() {
-            return Some((desc[pos + 1].into(), 3));
+        if !desc.is_empty() {
+            return Some((desc[1].into(), 3));
         }
 
         // Malformed report
@@ -392,19 +398,19 @@ fn hid_item_size(desc: &[u8], pos: usize) -> Option<(usize, usize)> {
 /// Get the bytes from a HID report descriptor
 ///
 /// Must only be called with `num_bytes` 0, 1, 2 or 4.
-fn hid_report_bytes(desc: &[u8], num_bytes: usize, pos: usize) -> u32 {
-    if pos + num_bytes >= desc.len() {
+fn hid_report_bytes(desc: &[u8], num_bytes: usize) -> u32 {
+    if num_bytes >= desc.len() {
         return 0;
     }
 
     match num_bytes {
         0 => 0,
-        1 => desc[pos + 1] as u32,
+        1 => desc[1] as u32,
         2 => {
-            let bytes = [desc[pos + 1], desc[pos + 2], 0, 0];
+            let bytes = [desc[1], desc[2], 0, 0];
             u32::from_le_bytes(bytes)
         }
-        4 => u32::from_le_bytes(desc[pos + 1..=pos + 4].try_into().unwrap()),
+        4 => u32::from_le_bytes(desc[1..=4].try_into().unwrap()),
         _ => unreachable!(),
     }
 }
