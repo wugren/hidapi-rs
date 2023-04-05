@@ -4,6 +4,7 @@ extern crate udev;
 
 use std::{
     cell::{Cell, Ref, RefCell},
+    convert::TryInto,
     ffi::{CStr, CString, OsStr, OsString},
     fs::{File, OpenOptions},
     io::Read,
@@ -399,13 +400,11 @@ fn hid_report_bytes(desc: &[u8], num_bytes: usize, pos: usize) -> u32 {
     match num_bytes {
         0 => 0,
         1 => desc[pos + 1] as u32,
-        2 => desc[pos + 2] as u32 * 256_u32 + desc[pos + 1] as u32,
-        4 => {
-            (desc[pos + 4] as u32 * 0x01000000)
-                + (desc[pos + 3] as u32 * 0x00010000)
-                + (desc[pos + 2] as u32 * 0x00000100)
-                + (desc[pos + 1] as u32 * 0x00000001)
+        2 => {
+            let bytes = [desc[pos + 1], desc[pos + 2], 0, 0];
+            u32::from_le_bytes(bytes)
         }
+        4 => u32::from_le_bytes(desc[pos + 1..=pos + 4].try_into().unwrap()),
         _ => unreachable!(),
     }
 }
