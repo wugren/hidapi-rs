@@ -66,8 +66,8 @@ impl HidApiBackend {
 
         let mut devices = Vec::new();
         for device in scan {
-            if let Some(device) = device_to_hid_device_info(&device) {
-                devices.push(device);
+            if let Some(mut device) = device_to_hid_device_info(&device) {
+                devices.append(&mut device);
             }
         }
 
@@ -114,7 +114,9 @@ const BUS_BLUETOOTH: u16 = 0x05;
 const BUS_I2C: u16 = 0x18;
 const BUS_SPI: u16 = 0x1C;
 
-fn device_to_hid_device_info(raw_device: &udev::Device) -> Option<DeviceInfo> {
+fn device_to_hid_device_info(raw_device: &udev::Device) -> Option<Vec<DeviceInfo>> {
+    let mut infos = Vec::new();
+
     // We're given the hidraw device, but we actually want to go and check out
     // the info for the parent hid device.
     let device = match raw_device.parent_with_subsystem("hid") {
@@ -154,14 +156,6 @@ fn device_to_hid_device_info(raw_device: &udev::Device) -> Option<DeviceInfo> {
         None | Some(Err(_)) => return None,
     };
 
-    // Get the first usage page and usage for our current DeviceInfo
-    let (usage_page, usage) = match HidrawReportDescriptor::from_syspath(raw_device.syspath())
-        .map(|d| d.usages().next())
-    {
-        Ok(Some(v)) => v,
-        _ => (0, 0),
-    };
-
     // Thus far we've gathered all the common attributes.
     let info = DeviceInfo {
         path,
@@ -171,22 +165,50 @@ fn device_to_hid_device_info(raw_device: &udev::Device) -> Option<DeviceInfo> {
         release_number: 0,
         manufacturer_string: WcharString::None,
         product_string: WcharString::None,
-        usage_page,
-        usage,
+        usage_page: 0,
+        usage: 0,
         interface_number: -1,
         bus_type,
     };
 
     // USB has a bunch more information but everything else gets the same empty
     // manufacturer and the product we read from the property above.
-    match bus_type {
-        BusType::Usb => Some(fill_in_usb(raw_device, info, name)),
-        _ => Some(DeviceInfo {
+    let info = match bus_type {
+        BusType::Usb => fill_in_usb(raw_device, info, name),
+        _ => DeviceInfo {
             manufacturer_string: WcharString::String("".into()),
             product_string: osstring_to_string(name.into()),
             ..info
-        }),
+        },
+    };
+
+    if let Ok(descriptor) = HidrawReportDescriptor::from_syspath(raw_device.syspath()) {
+        let mut usages = descriptor.usages();
+
+        // Get the first usage page and usage for our current DeviceInfo
+        if let Some((usage_page, usage)) = usages.next() {
+            infos.push(DeviceInfo {
+                usage_page,
+                usage,
+                ..info
+            });
+
+            // Now we can create DeviceInfo for all the other usages
+            for (usage_page, usage) in usages {
+                let prev = infos.last().unwrap();
+
+                infos.push(DeviceInfo {
+                    usage_page,
+                    usage,
+                    ..prev.clone()
+                })
+            }
+        }
+    } else {
+        infos.push(info);
     }
+
+    Some(infos)
 }
 
 /// Fill in the extra information that's available for a USB device.
@@ -671,9 +693,11 @@ impl HidDeviceBackend for HidDevice {
     fn get_device_info(&self) -> HidResult<DeviceInfo> {
         self.clear_error();
 
+        // The clone is a bit silly but we can't implement Copy. Maybe it's not
+        // much worse than doing the conversion to Rust from interacting with C.
         let device = udev::Device::from_syspath(&self.path)?;
         match device_to_hid_device_info(&device) {
-            Some(info) => Ok(info),
+            Some(info) => Ok(info[0].clone()),
             None => self.register_error("failed to create device info".into()),
         }
     }
