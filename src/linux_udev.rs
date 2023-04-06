@@ -274,6 +274,30 @@ impl HidrawReportDescriptor {
         Ok(descriptor)
     }
 
+    /// Create a descriptor from a slice
+    ///
+    /// It returns an error if the value slice is too large for it to be a HID
+    /// descriptor
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn from_slice(value: &[u8]) -> HidResult<Self> {
+        let size: u32 = match value.len().try_into() {
+            Ok(v) => v,
+            Err(_) => {
+                return Err(HidError::HidApiError {
+                    message: "HID report descriptor over 4kB".into(),
+                })
+            }
+        };
+
+        let mut desc = Self {
+            size,
+            ..Default::default()
+        };
+        desc.value[..value.len()].copy_from_slice(value);
+
+        Ok(desc)
+    }
+
     pub fn usages(&self) -> impl Iterator<Item = (u16, u16)> + '_ {
         UsageIterator {
             initial: true,
@@ -717,5 +741,24 @@ mod test {
         assert_eq!(None, parse_hid_vid_pid("Hello World"));
         assert_eq!(Some((1, 1, 1)), parse_hid_vid_pid("1:1:1"));
         assert_eq!(Some((0x11, 0x17, 0x18)), parse_hid_vid_pid("11:0017:00018"));
+    }
+
+    #[test]
+    fn test_hidraw_report_descriptor_1() {
+        let data = include_bytes!("../tests/assets/mouse1.data");
+        let desc = HidrawReportDescriptor::from_slice(&data[..]).expect("descriptor");
+        let values = desc.usages().collect::<Vec<_>>();
+
+        assert_eq!(vec![(65468, 136)], values);
+    }
+
+    #[test]
+    fn test_hidraw_report_descriptor_2() {
+        let data = include_bytes!("../tests/assets/mouse2.data");
+        let desc = HidrawReportDescriptor::from_slice(&data[..]).expect("descriptor");
+        let values = desc.usages().collect::<Vec<_>>();
+
+        let expected = vec![(1, 2), (1, 1), (1, 128), (12, 1), (65280, 14)];
+        assert_eq!(expected, values);
     }
 }
