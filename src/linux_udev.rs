@@ -530,14 +530,16 @@ unsafe impl Send for HidDevice {}
 // API for the library to call us, or for internal uses
 impl HidDevice {
     pub(crate) fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<Self> {
-        // TODO: fix this up so we don't copy the serial number
-        let sn = sn.map(|s| WcharString::String(s.to_string()));
-        for device in HidApiBackend::get_hid_device_info_vector()? {
-            if device.vendor_id == vid && device.product_id == pid {
-                if sn.is_none() || sn == Some(device.serial_number) {
-                    return Self::open_path(&device.path);
+        for device in HidApiBackend::get_hid_device_info_vector()?.iter()
+            .filter(|device| device.vendor_id == vid && device.product_id == pid)
+        {
+            match (sn, &device.serial_number) {
+                (None, _) => return Self::open_path(&device.path),
+                (Some(sn), WcharString::String(serial_number)) if sn == serial_number => {
+                    return Self::open_path(&device.path)
                 }
-            }
+                _ => continue,
+            };
         }
 
         register_global_error("device not found".into())
