@@ -1,4 +1,4 @@
-//! Functions for talking to udev directly instead of going through hidapi
+//! This backend uses libudev to discover devices and then talks to hidraw directly
 
 extern crate udev;
 

@@ -41,7 +41,7 @@
 //! - `linux-static-hidraw`: uses statically linked `hidraw` backend on Linux (default)
 //! - `linux-shared-libusb`: uses dynamically linked `libusb` backend on Linux
 //! - `linux-shared-hidraw`: uses dynamically linked `hidraw` backend on Linux
-//! - `linux-shared-udev`: uses dynamically linked `udev` backend on Linux
+//! - `linux`: talks to hidraw directly without using `hidapi` C library
 //! - `illumos-static-libusb`: uses statically linked `libusb` backend on Illumos (default)
 //! - `illumos-shared-libusb`: uses statically linked `hidraw` backend on Illumos
 //! - `macos-shared-device`: enables shared access to HID devices on MacOS
@@ -58,7 +58,7 @@
 //! an opt-in that can be enabled with the `macos-shared-device` feature flag.
 
 extern crate libc;
-#[cfg(linuxudev)]
+#[cfg(linux_native)]
 extern crate nix;
 
 #[cfg(target_os = "windows")]
@@ -67,11 +67,11 @@ extern crate winapi;
 mod error;
 mod ffi;
 
-#[cfg(not(linuxudev))]
+#[cfg(not(linux_native))]
 mod hidapi;
-#[cfg(linuxudev)]
-#[cfg_attr(docsrs, doc(cfg(linuxudev)))]
-mod linux_udev;
+#[cfg(linux_native)]
+#[cfg_attr(docsrs, doc(cfg(linux_native)))]
+mod linux_native;
 #[cfg(target_os = "macos")]
 #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
 mod macos;
@@ -88,14 +88,10 @@ use std::sync::Mutex;
 
 pub use error::HidError;
 
-#[cfg(not(linuxudev))]
+#[cfg(not(linux_native))]
 use hidapi::HidApiBackend;
-// #[cfg(not(linuxudev))]
-// pub use hidapi::HidDevice;
-#[cfg(linuxudev)]
-use linux_udev::HidApiBackend;
-// #[cfg(linuxudev)]
-// pub use linux_udev::HidDevice;
+#[cfg(linux_native)]
+use linux_native::HidApiBackend;
 
 pub type HidResult<T> = Result<T, HidError>;
 
@@ -121,7 +117,7 @@ fn lazy_init(do_enumerate: bool) -> HidResult<()> {
             }
 
             // Initialize the HID
-            #[cfg(not(linuxudev))]
+            #[cfg(not(linux_native))]
             if unsafe { ffi::hid_init() } == -1 {
                 return Err(HidError::InitializationError);
             }
@@ -258,7 +254,7 @@ impl HidApi {
 #[derive(Clone, PartialEq)]
 enum WcharString {
     String(String),
-    #[cfg_attr(linuxudev, allow(dead_code))]
+    #[cfg_attr(linux_native, allow(dead_code))]
     Raw(Vec<wchar_t>),
     None,
 }
