@@ -17,6 +17,7 @@ use nix::{
     errno::Errno,
     ioctl_read, ioctl_readwrite_buf,
     poll::{poll, PollFd, PollFlags},
+    sys::stat::{fstat, major, minor},
     unistd::{read, write},
 };
 
@@ -470,7 +471,6 @@ ioctl_readwrite_buf!(
 
 /// Object for accessing the HID device
 pub struct HidDevice {
-    path: PathBuf,
     blocking: Cell<bool>,
     fd: OwnedFd,
     info: RefCell<Option<DeviceInfo>>,
@@ -524,7 +524,6 @@ impl HidDevice {
         }
 
         Ok(Self {
-            path: path.into(),
             blocking: Cell::new(true),
             fd,
             info: RefCell::new(None),
@@ -644,9 +643,14 @@ impl HidDeviceBackend for HidDevice {
     }
 
     fn get_device_info(&self) -> HidResult<DeviceInfo> {
+        // What we have is a descriptor to a file in /dev but we need a syspath
+        // so we get the major/minor from there and generate our syspath
+        let devnum = fstat(self.fd.as_raw_fd())?.st_rdev;
+        let syspath: PathBuf = format!("/sys/dev/char/{}:{}", major(devnum), minor(devnum)).into();
+
         // The clone is a bit silly but we can't implement Copy. Maybe it's not
         // much worse than doing the conversion to Rust from interacting with C.
-        let device = udev::Device::from_syspath(&self.path)?;
+        let device = udev::Device::from_syspath(&syspath)?;
         match device_to_hid_device_info(&device) {
             Some(info) => Ok(info[0].clone()),
             None => {
