@@ -13,7 +13,6 @@ use std::{
         unix::{ffi::OsStringExt, fs::OpenOptionsExt},
     },
     path::{Path, PathBuf},
-    sync::Mutex,
 };
 
 use nix::{
@@ -25,34 +24,10 @@ use nix::{
 
 use super::{BusType, DeviceInfo, HidDeviceBackend, HidError, HidResult, WcharString};
 
-/// Global error to simulate what C hidapi does
-static GLOBAL_ERROR: Mutex<RefCell<Option<String>>> = Mutex::new(RefCell::new(None));
-
-/// Clear the global error
-fn clear_global_error() {
-    GLOBAL_ERROR.lock().expect("global error lock").take();
-}
-
-/// Register the global error
-///
-/// It returns an error with his string
-fn register_global_error<T>(error: String) -> HidResult<T> {
-    GLOBAL_ERROR
-        .lock()
-        .expect("global error lock")
-        .replace(Some(error));
-
-    Err(HidError::HidApiError {
-        message: "device not found".into(),
-    })
-}
-
 pub struct HidApiBackend;
 
 impl HidApiBackend {
     pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
-        clear_global_error();
-
         // The C version assumes these can't fail, and they should only fail in case
         // of memory allocation issues, at which point maybe we should panic
         let mut enumerator = match udev::Enumerator::new() {
@@ -72,14 +47,6 @@ impl HidApiBackend {
             }
         }
 
-        // What happens with the C hidapi is that it registers the error, returns
-        // NULL, but in this library we still end up returning Ok with an empty
-        // vector. So we do the same here.
-        #[allow(unused_must_use)]
-        if devices.is_empty() {
-            register_global_error::<()>("No HID devices found in the system".to_string());
-        }
-
         Ok(devices)
     }
 
@@ -93,19 +60,6 @@ impl HidApiBackend {
 
     pub fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         HidDevice::open_path(device_path)
-    }
-
-    pub fn check_error() -> HidResult<HidError> {
-        let error = GLOBAL_ERROR.lock().expect("global error lock");
-        let borrowed = error.borrow();
-        let msg = match borrowed.as_ref() {
-            Some(s) => s,
-            None => "Success",
-        };
-
-        Err(HidError::HidApiError {
-            message: msg.to_string(),
-        })
     }
 }
 
@@ -522,7 +476,6 @@ pub struct HidDevice {
     blocking: Cell<bool>,
     fd: OwnedFd,
     info: RefCell<Option<DeviceInfo>>,
-    err: RefCell<Option<String>>,
 }
 
 unsafe impl Send for HidDevice {}
@@ -530,7 +483,8 @@ unsafe impl Send for HidDevice {}
 // API for the library to call us, or for internal uses
 impl HidDevice {
     pub(crate) fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<Self> {
-        for device in HidApiBackend::get_hid_device_info_vector()?.iter()
+        for device in HidApiBackend::get_hid_device_info_vector()?
+            .iter()
             .filter(|device| device.vendor_id == vid && device.product_id == pid)
         {
             match (sn, &device.serial_number) {
@@ -542,12 +496,12 @@ impl HidDevice {
             };
         }
 
-        register_global_error("device not found".into())
+        Err(HidError::HidApiError {
+            message: "device not found".into(),
+        })
     }
 
     pub(crate) fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
-        clear_global_error();
-
         // Paths on Linux can be anything but devnode paths are going to be ASCII
         let path = device_path.to_str().expect("path must be utf-8");
         let fd: OwnedFd = match OpenOptions::new()
@@ -558,16 +512,17 @@ impl HidDevice {
         {
             Ok(f) => f.into(),
             Err(e) => {
-                return register_global_error(format!(
-                    "failed to open device with path {path}: {e}"
-                ))
+                return Err(HidError::HidApiError {
+                    message: format!("failed to open device with path {path}: {e}"),
+                });
             }
         };
 
         let mut size = 0_i32;
         if let Err(e) = unsafe { hidraw_ioc_grdescsize(fd.as_raw_fd(), &mut size) } {
-            let error = format!("ioctl(GRDESCSIZE) error for {path}, not a HIDRAW device?: {e}");
-            return register_global_error(error);
+            return Err(HidError::HidApiError {
+                message: format!("ioctl(GRDESCSIZE) error for {path}, not a HIDRAW device?: {e}"),
+            });
         }
 
         Ok(Self {
@@ -575,21 +530,7 @@ impl HidDevice {
             blocking: Cell::new(true),
             fd,
             info: RefCell::new(None),
-            err: RefCell::new(None),
         })
-    }
-
-    /// Remove the error string for this device
-    fn clear_error(&self) {
-        self.err.take();
-    }
-
-    /// Set the error string for the device.
-    ///
-    /// For convenience it returns the error.
-    fn register_error<T>(&self, error: String) -> HidResult<T> {
-        self.err.replace(Some(error.clone()));
-        Err(HidError::HidApiError { message: error })
     }
 
     fn info(&self) -> HidResult<Ref<DeviceInfo>> {
@@ -604,27 +545,12 @@ impl HidDevice {
 }
 
 impl HidDeviceBackend for HidDevice {
-    fn check_error(&self) -> HidResult<HidError> {
-        let borrow = self.err.borrow();
-        let msg = match borrow.as_ref() {
-            Some(s) => s,
-            None => "Success",
-        };
-
-        Ok(HidError::HidApiError {
-            message: msg.to_string(),
-        })
-    }
-
     fn write(&self, data: &[u8]) -> HidResult<usize> {
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
 
-        match write(self.fd.as_raw_fd(), data) {
-            Ok(w) => Ok(w),
-            Err(e) => self.register_error(e.to_string()),
-        }
+        Ok(write(self.fd.as_raw_fd(), data)?)
     }
 
     fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
@@ -634,8 +560,6 @@ impl HidDeviceBackend for HidDevice {
     }
 
     fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        self.clear_error();
-
         let pollfd = PollFd::new(self.fd.as_raw_fd(), PollFlags::POLLIN);
         let res = poll(&mut [pollfd], timeout)?;
 
@@ -648,19 +572,19 @@ impl HidDeviceBackend for HidDevice {
             .map(|e| e.intersects(PollFlags::POLLERR | PollFlags::POLLHUP | PollFlags::POLLNVAL));
 
         if events.is_none() || events == Some(true) {
-            return self.register_error("unexpected poll error (device disconnected)".into());
+            return Err(HidError::HidApiError {
+                message: "unexpected poll error (device disconnected)".into(),
+            });
         }
 
         match read(self.fd.as_raw_fd(), buf) {
             Ok(w) => Ok(w),
             Err(Errno::EAGAIN) | Err(Errno::EINPROGRESS) => Ok(0),
-            Err(e) => self.register_error(e.to_string()),
+            Err(e) => Err(e.into()),
         }
     }
 
     fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
-        self.clear_error();
-
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
@@ -672,8 +596,9 @@ impl HidDeviceBackend for HidDevice {
         } {
             Ok(n) => n as usize,
             Err(e) => {
-                let s = format!("ioctl (GFEATURE): {e}");
-                return self.register_error(s);
+                return Err(HidError::HidApiError {
+                    message: format!("ioctl (GFEATURE): {e}"),
+                })
             }
         };
 
@@ -688,13 +613,12 @@ impl HidDeviceBackend for HidDevice {
     }
 
     fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
-        self.clear_error();
-
         let res = match unsafe { hidraw_ioc_get_feature(self.fd.as_raw_fd(), buf) } {
             Ok(n) => n as usize,
             Err(e) => {
-                let s = format!("ioctl (GFEATURE): {e}");
-                return self.register_error(s);
+                return Err(HidError::HidApiError {
+                    message: format!("ioctl (GFEATURE): {e}"),
+                })
             }
         };
 
@@ -722,14 +646,16 @@ impl HidDeviceBackend for HidDevice {
     }
 
     fn get_device_info(&self) -> HidResult<DeviceInfo> {
-        self.clear_error();
-
         // The clone is a bit silly but we can't implement Copy. Maybe it's not
         // much worse than doing the conversion to Rust from interacting with C.
         let device = udev::Device::from_syspath(&self.path)?;
         match device_to_hid_device_info(&device) {
             Some(info) => Ok(info[0].clone()),
-            None => self.register_error("failed to create device info".into()),
+            None => {
+                return Err(HidError::HidApiError {
+                    message: "failed to create device info".into(),
+                })
+            }
         }
     }
 }

@@ -246,6 +246,7 @@ impl HidApi {
     /// When `Err()` is returned, then acquiring the error string from the hidapi C
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
+    #[cfg(not(linux_native))]
     pub fn check_error(&self) -> HidResult<HidError> {
         HidApiBackend::check_error()
     }
@@ -416,6 +417,7 @@ impl fmt::Debug for DeviceInfo {
 
 /// Trait which the different backends must implement
 trait HidDeviceBackend {
+    #[cfg(not(linux_native))]
     fn check_error(&self) -> HidResult<HidError>;
     fn write(&self, data: &[u8]) -> HidResult<usize>;
     fn read(&self, buf: &mut [u8]) -> HidResult<usize>;
@@ -454,6 +456,7 @@ impl HidDevice {
     /// When `Err()` is returned, then acquiring the error string from the hidapi C
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
+    #[cfg(not(linux_native))]
     pub fn check_error(&self) -> HidResult<HidError> {
         self.inner.check_error()
     }

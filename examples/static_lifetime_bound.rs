@@ -36,7 +36,7 @@ fn test_lt() -> Rc<HidDevice> {
 
     let dev_1 = dev.clone();
     requires_static_lt_bound(move || {
-        println!("{}", dev_1.check_error().unwrap()); //<! Can be captured by closure with static lt
+        println!("{:?}", dev_1.get_device_info().unwrap()); //<! Can be captured by closure with static lt
     });
 
     dev //<! Can be returned from a function, which exceeds the lifetime of the API context
