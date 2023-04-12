@@ -1,7 +1,5 @@
 //! This backend uses libudev to discover devices and then talks to hidraw directly
 
-extern crate udev;
-
 use std::{
     cell::{Cell, Ref, RefCell},
     convert::TryInto,
