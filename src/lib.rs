@@ -69,7 +69,7 @@ use winapi::shared::guiddef::GUID;
 mod error;
 mod ffi;
 
-#[cfg(not(linux_native))]
+#[cfg(hidapi)]
 mod hidapi;
 #[cfg(linux_native)]
 mod ioctl;
@@ -92,7 +92,7 @@ use std::sync::Mutex;
 
 pub use error::HidError;
 
-#[cfg(not(linux_native))]
+#[cfg(hidapi)]
 use hidapi::HidApiBackend;
 #[cfg(linux_native)]
 use linux_native::HidApiBackend;
@@ -121,7 +121,7 @@ fn lazy_init(do_enumerate: bool) -> HidResult<()> {
             }
 
             // Initialize the HID
-            #[cfg(not(linux_native))]
+            #[cfg(hidapi)]
             if unsafe { ffi::hid_init() } == -1 {
                 return Err(HidError::InitializationError);
             }
@@ -250,7 +250,7 @@ impl HidApi {
     /// When `Err()` is returned, then acquiring the error string from the hidapi C
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
-    #[cfg(not(linux_native))]
+    #[cfg(hidapi)]
     pub fn check_error(&self) -> HidResult<HidError> {
         HidApiBackend::check_error()
     }
@@ -421,7 +421,7 @@ impl fmt::Debug for DeviceInfo {
 
 /// Trait which the different backends must implement
 trait HidDeviceBackendBase {
-    #[cfg(not(linux_native))]
+    #[cfg(hidapi)]
     fn check_error(&self) -> HidResult<HidError>;
     fn write(&self, data: &[u8]) -> HidResult<usize>;
     fn read(&self, buf: &mut [u8]) -> HidResult<usize>;
@@ -495,7 +495,7 @@ impl HidDevice {
     /// When `Err()` is returned, then acquiring the error string from the hidapi C
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
-    #[cfg(not(linux_native))]
+    #[cfg(hidapi)]
     pub fn check_error(&self) -> HidResult<HidError> {
         self.inner.check_error()
     }
