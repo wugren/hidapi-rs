@@ -12,7 +12,7 @@ ioctl_read!(
     hidraw_ioc_grdescsize,
     HIDRAW_IOC_MAGIC,
     HIDRAW_IOC_GRDESCSIZE,
-    i32
+    libc::c_int
 );
 
 ioctl_readwrite_buf!(
