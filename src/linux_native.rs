@@ -382,16 +382,9 @@ fn hid_report_bytes(desc: &[u8], num_bytes: usize) -> u32 {
         return 0;
     }
 
-    match num_bytes {
-        0 => 0,
-        1 => desc[1] as u32,
-        2 => {
-            let bytes = [desc[1], desc[2], 0, 0];
-            u32::from_le_bytes(bytes)
-        }
-        4 => u32::from_le_bytes(desc[1..=4].try_into().unwrap()),
-        _ => unreachable!(),
-    }
+    let mut bytes: [u8; 4] = [0; 4];
+    bytes[..num_bytes].copy_from_slice(&desc[1..=num_bytes]);
+    u32::from_le_bytes(bytes)
 }
 
 /// Get the attribute from the device and convert it into a [`WcharString`].
