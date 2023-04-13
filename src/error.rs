@@ -59,7 +59,7 @@ impl From<std::io::Error> for HidError {
     }
 }
 
-#[cfg(linux_native)]
+#[cfg(feature = "linux-native")]
 impl From<nix::errno::Errno> for HidError {
     fn from(e: nix::errno::Errno) -> Self {
         Self::HidApiError {

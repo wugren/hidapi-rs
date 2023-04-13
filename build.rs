@@ -100,7 +100,6 @@ fn compile_linux() {
             "LINUX_NATIVE",
             Box::new(|| {
                 // The udev crate takes care of finding its library
-                println!("cargo:rustc-cfg=linux_native");
             }),
         ),
     ];
