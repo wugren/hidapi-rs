@@ -184,12 +184,12 @@ fn fill_in_usb(device: &udev::Device, info: DeviceInfo, name: &OsStr) -> DeviceI
     };
     let manufacturer_string = attribute_as_wchar(&usb_dev, "manufacturer");
     let product_string = attribute_as_wchar(&usb_dev, "product");
-    let release_number = attribute_as_u16(&usb_dev, "bcdDevice");
+    let release_number = attribute_as_u16(&usb_dev, "bcdDevice").unwrap_or(0);
     let interface_number = device
         .parent_with_subsystem_devtype("usb", "usb_interface")
         .ok()
         .flatten()
-        .map(|ref dev| attribute_as_i32(dev, "bInterfaceNumber"))
+        .and_then(|ref dev| attribute_as_i32(dev, "bInterfaceNumber"))
         .unwrap_or(-1);
 
     DeviceInfo {
@@ -404,22 +404,20 @@ fn attribute_as_wchar(dev: &udev::Device, attr: &str) -> WcharString {
 
 /// Get the attribute from the device and convert it into a i32
 ///
-/// On error or if the attribute is not found, it returns -1;
-fn attribute_as_i32(dev: &udev::Device, attr: &str) -> i32 {
+/// On error or if the attribute is not found, it returns None.
+fn attribute_as_i32(dev: &udev::Device, attr: &str) -> Option<i32> {
     dev.attribute_value(attr)
         .and_then(OsStr::to_str)
         .and_then(|v| i32::from_str_radix(v, 16).ok())
-        .unwrap_or(-1)
 }
 
 /// Get the attribute from the device and convert it into a u16
 ///
-/// On error or if the attribute is not found, it returns 0;
-fn attribute_as_u16(dev: &udev::Device, attr: &str) -> u16 {
+/// On error or if the attribute is not found, it returns None.
+fn attribute_as_u16(dev: &udev::Device, attr: &str) -> Option<u16> {
     dev.attribute_value(attr)
         .and_then(OsStr::to_str)
         .and_then(|v| u16::from_str_radix(v, 16).ok())
-        .unwrap_or(0)
 }
 
 /// Convert a [`OsString`] into a [`WcharString`]
