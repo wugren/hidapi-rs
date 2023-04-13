@@ -473,6 +473,7 @@ impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase {}
 #[cfg(target_os = "macos")]
 impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendMacos {}
 
+/// Automatically implement the top trait
 #[cfg(target_os = "windows")]
 impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendWindows {}
 
