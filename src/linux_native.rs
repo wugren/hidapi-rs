@@ -15,13 +15,15 @@ use std::{
 
 use nix::{
     errno::Errno,
-    ioctl_read, ioctl_readwrite_buf,
     poll::{poll, PollFd, PollFlags},
     sys::stat::{fstat, major, minor},
     unistd::{read, write},
 };
 
-use super::{BusType, DeviceInfo, HidDeviceBackend, HidError, HidResult, WcharString};
+use super::{
+    ioctl::{hidraw_ioc_get_feature, hidraw_ioc_grdescsize, hidraw_ioc_set_feature},
+    BusType, DeviceInfo, HidDeviceBackend, HidError, HidResult, WcharString,
+};
 
 pub struct HidApiBackend;
 
@@ -442,32 +444,6 @@ fn parse_hid_vid_pid(s: &str) -> Option<(u16, u16, u16)> {
     let numbers: Vec<u16> = elems.into_iter().map(|n| n.unwrap()).collect();
     Some((numbers[0], numbers[1], numbers[2]))
 }
-
-// From linux/hidraw.h
-const HIDRAW_IOC_MAGIC: u8 = b'H';
-const HIDRAW_IOC_GRDESCSIZE: u8 = 0x01;
-const HIDRAW_SET_FEATURE: u8 = 0x06;
-const HIDRAW_GET_FEATURE: u8 = 0x07;
-
-ioctl_read!(
-    hidraw_ioc_grdescsize,
-    HIDRAW_IOC_MAGIC,
-    HIDRAW_IOC_GRDESCSIZE,
-    i32
-);
-
-ioctl_readwrite_buf!(
-    hidraw_ioc_set_feature,
-    HIDRAW_IOC_MAGIC,
-    HIDRAW_SET_FEATURE,
-    u8
-);
-ioctl_readwrite_buf!(
-    hidraw_ioc_get_feature,
-    HIDRAW_IOC_MAGIC,
-    HIDRAW_GET_FEATURE,
-    u8
-);
 
 /// Object for accessing the HID device
 pub struct HidDevice {

@@ -72,6 +72,8 @@ mod hidapi;
 #[cfg(linux_native)]
 #[cfg_attr(docsrs, doc(cfg(linux_native)))]
 mod linux_native;
+#[cfg(linux_native)]
+mod ioctl;
 #[cfg(target_os = "macos")]
 #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
 mod macos;
