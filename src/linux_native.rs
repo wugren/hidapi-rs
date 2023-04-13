@@ -22,7 +22,7 @@ use nix::{
 
 use super::{
     ioctl::{hidraw_ioc_get_feature, hidraw_ioc_grdescsize, hidraw_ioc_set_feature},
-    BusType, DeviceInfo, HidDeviceBackend, HidError, HidResult, WcharString,
+    BusType, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString,
 };
 
 // From linux/hid.h
@@ -517,7 +517,7 @@ impl HidDevice {
     }
 }
 
-impl HidDeviceBackend for HidDevice {
+impl HidDeviceBackendBase for HidDevice {
     fn write(&self, data: &[u8]) -> HidResult<usize> {
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);

@@ -7,7 +7,10 @@ use std::{
 
 use libc::{c_int, size_t, wchar_t};
 
-use crate::{ffi, DeviceInfo, HidDeviceBackend, HidError, HidResult, WcharString};
+use crate::{ffi, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString};
+
+#[cfg(target_os = "macos")]
+mod macos;
 
 const STRING_BUF_LEN: usize = 128;
 
@@ -181,7 +184,7 @@ impl HidDevice {
     }
 }
 
-impl HidDeviceBackend for HidDevice {
+impl HidDeviceBackendBase for HidDevice {
     fn check_error(&self) -> HidResult<HidError> {
         Ok(HidError::HidApiError {
             message: unsafe {

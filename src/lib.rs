@@ -418,7 +418,7 @@ impl fmt::Debug for DeviceInfo {
 }
 
 /// Trait which the different backends must implement
-trait HidDeviceBackend {
+trait HidDeviceBackendBase {
     #[cfg(not(linux_native))]
     fn check_error(&self) -> HidResult<HidError>;
     fn write(&self, data: &[u8]) -> HidResult<usize>;
@@ -438,6 +438,30 @@ trait HidDeviceBackend {
         })
     }
 }
+
+/// A trait with the extra methods that are available on macOS
+#[cfg(target_os = "macos")]
+trait HidDeviceBackendMacos {
+    /// Get the location ID for a [`HidDevice`] device.
+    fn get_location_id(&self) -> HidResult<u32>;
+
+    /// Check if the device was opened in exclusive mode.
+    fn is_open_exclusive(&self) -> HidResult<bool>;
+}
+
+#[cfg(not(target_os = "macos"))]
+trait HidDeviceBackend: HidDeviceBackendBase {}
+#[cfg(target_os = "macos")]
+trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendMacos {}
+
+
+/// Automatically implement the top trait
+#[cfg(not(target_os = "macos"))]
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase {}
+
+/// Automatically implement the top trait
+#[cfg(target_os = "macos")]
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendMacos {}
 
 pub struct HidDevice {
     inner: Box<dyn HidDeviceBackend>,

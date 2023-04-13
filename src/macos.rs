@@ -24,33 +24,11 @@ impl HidApi {
 impl HidDevice {
     /// Get the location ID for a [`HidDevice`] device.
     pub fn get_location_id(&self) -> HidResult<u32> {
-        let mut location_id: u32 = 0;
-
-        let res = unsafe {
-            ffi::macos::hid_darwin_get_location_id(self._hid_device, &mut location_id as *mut u32)
-        };
-
-        if res == -1 {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(err) => Err(err),
-            }
-        } else {
-            Ok(location_id)
-        }
+        self.inner.get_location_id()
     }
 
     /// Check if the device was opened in exclusive mode.
     pub fn is_open_exclusive(&self) -> HidResult<bool> {
-        let res = unsafe { ffi::macos::hid_darwin_is_device_open_exclusive(self._hid_device) };
-
-        if res == -1 {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(err) => Err(err),
-            }
-        } else {
-            Ok(res == 1)
-        }
+        self.inner.is_open_exclusive()
     }
 }
