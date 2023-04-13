@@ -25,6 +25,15 @@ use super::{
     BusType, DeviceInfo, HidDeviceBackend, HidError, HidResult, WcharString,
 };
 
+// From linux/hid.h
+const HID_MAX_DESCRIPTOR_SIZE: usize = 4096;
+
+// Bus values from linux/input.h
+const BUS_USB: u16 = 0x03;
+const BUS_BLUETOOTH: u16 = 0x05;
+const BUS_I2C: u16 = 0x18;
+const BUS_SPI: u16 = 0x1C;
+
 pub struct HidApiBackend;
 
 impl HidApiBackend {
@@ -63,12 +72,6 @@ impl HidApiBackend {
         HidDevice::open_path(device_path)
     }
 }
-
-// Bus values from linux/input.h
-const BUS_USB: u16 = 0x03;
-const BUS_BLUETOOTH: u16 = 0x05;
-const BUS_I2C: u16 = 0x18;
-const BUS_SPI: u16 = 0x1C;
 
 fn device_to_hid_device_info(raw_device: &udev::Device) -> Option<Vec<DeviceInfo>> {
     let mut infos = Vec::new();
@@ -197,9 +200,6 @@ fn fill_in_usb(device: &udev::Device, info: DeviceInfo, name: &OsStr) -> DeviceI
         ..info
     }
 }
-
-// From linux/hid.h
-const HID_MAX_DESCRIPTOR_SIZE: usize = 4096;
 
 // From linux/hidraw.h
 struct HidrawReportDescriptor {
