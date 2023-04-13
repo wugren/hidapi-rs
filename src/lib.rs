@@ -63,6 +63,8 @@ extern crate nix;
 
 #[cfg(target_os = "windows")]
 extern crate winapi;
+#[cfg(target_os = "windows")]
+use winapi::shared::guiddef::GUID;
 
 mod error;
 mod ffi;
@@ -70,10 +72,10 @@ mod ffi;
 #[cfg(not(linux_native))]
 mod hidapi;
 #[cfg(linux_native)]
+mod ioctl;
+#[cfg(linux_native)]
 #[cfg_attr(docsrs, doc(cfg(linux_native)))]
 mod linux_native;
-#[cfg(linux_native)]
-mod ioctl;
 #[cfg(target_os = "macos")]
 #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
 mod macos;
@@ -449,19 +451,30 @@ trait HidDeviceBackendMacos {
     fn is_open_exclusive(&self) -> HidResult<bool>;
 }
 
-#[cfg(not(target_os = "macos"))]
+/// A trait with the extra methods that are available on macOS
+#[cfg(target_os = "windows")]
+trait HidDeviceBackendWindows {
+    /// Get the container ID for a HID device
+    fn get_container_id(&self) -> HidResult<GUID>;
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 trait HidDeviceBackend: HidDeviceBackendBase {}
 #[cfg(target_os = "macos")]
 trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendMacos {}
-
+#[cfg(target_os = "windows")]
+trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendWindows {}
 
 /// Automatically implement the top trait
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase {}
 
 /// Automatically implement the top trait
 #[cfg(target_os = "macos")]
 impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendMacos {}
+
+#[cfg(target_os = "windows")]
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendWindows {}
 
 pub struct HidDevice {
     inner: Box<dyn HidDeviceBackend>,

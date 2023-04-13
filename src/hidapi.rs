@@ -11,6 +11,8 @@ use crate::{ffi, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharStr
 
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
 
 const STRING_BUF_LEN: usize = 128;
 

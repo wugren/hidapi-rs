@@ -1,7 +1,7 @@
 //! The extra beahviour for macOS
 
-use crate::{ffi, HidDeviceBackendBase, HidDeviceBackendMacos, HidResult};
 use super::HidDevice;
+use crate::{ffi, HidDeviceBackendBase, HidDeviceBackendMacos, HidResult};
 
 impl HidDeviceBackendMacos for HidDevice {
     fn get_location_id(&self) -> HidResult<u32> {
