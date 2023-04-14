@@ -390,21 +390,6 @@ fn osstring_to_string(s: OsString) -> WcharString {
     }
 }
 
-/// Return the value or exit the function
-///
-/// If the iterator return Some(Ok(n)) then the expression returns that value.
-/// Otherwise we exit out of the function with None.
-///
-/// This is like let-else but doesn't require a recent compiler.
-macro_rules! next_or_return {
-    ($iter:ident) => {
-        match $iter.next() {
-            Some(Ok(n)) => n,
-            _ => return None,
-        }
-    };
-}
-
 /// Parse a HID_ID string to find the bus type, the vendor and product id
 ///
 /// These strings would be of the format
@@ -412,9 +397,9 @@ macro_rules! next_or_return {
 ///     0003:000005AC:00008242
 fn parse_hid_vid_pid(s: &str) -> Option<(u16, u16, u16)> {
     let mut elems = s.split(':').map(|s| u16::from_str_radix(s, 16));
-    let devtype = next_or_return!(elems);
-    let vendor = next_or_return!(elems);
-    let product = next_or_return!(elems);
+    let devtype = elems.next()?.ok()?;
+    let vendor = elems.next()?.ok()?;
+    let product = elems.next()?.ok()?;
 
     Some((devtype, vendor, product))
 }
