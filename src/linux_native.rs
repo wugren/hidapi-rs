@@ -46,12 +46,10 @@ impl HidApiBackend {
             Err(_) => return Ok(Vec::new()),
         };
 
-        let mut devices = Vec::new();
-        for device in scan {
-            if let Some(mut device) = device_to_hid_device_info(&device) {
-                devices.append(&mut device);
-            }
-        }
+        let devices = scan
+            .filter_map(|device| device_to_hid_device_info(&device))
+            .flatten()
+            .collect::<Vec<_>>();
 
         Ok(devices)
     }
