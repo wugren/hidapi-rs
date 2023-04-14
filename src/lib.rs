@@ -41,6 +41,7 @@
 //! - `linux-static-hidraw`: uses statically linked `hidraw` backend on Linux (default)
 //! - `linux-shared-libusb`: uses dynamically linked `libusb` backend on Linux
 //! - `linux-shared-hidraw`: uses dynamically linked `hidraw` backend on Linux
+//! - `linux`: talks to hidraw directly without using `hidapi` C library
 //! - `illumos-static-libusb`: uses statically linked `libusb` backend on Illumos (default)
 //! - `illumos-shared-libusb`: uses statically linked `hidraw` backend on Illumos
 //! - `macos-shared-device`: enables shared access to HID devices on MacOS
@@ -57,13 +58,24 @@
 //! an opt-in that can be enabled with the `macos-shared-device` feature flag.
 
 extern crate libc;
+#[cfg(feature = "linux-native")]
+extern crate nix;
 
 #[cfg(target_os = "windows")]
 extern crate winapi;
+#[cfg(target_os = "windows")]
+use winapi::shared::guiddef::GUID;
 
 mod error;
 mod ffi;
 
+#[cfg(hidapi)]
+mod hidapi;
+#[cfg(feature = "linux-native")]
+mod ioctl;
+#[cfg(feature = "linux-native")]
+#[cfg_attr(docsrs, doc(cfg(feature = "linux-native")))]
+mod linux_native;
 #[cfg(target_os = "macos")]
 #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
 mod macos;
@@ -71,7 +83,7 @@ mod macos;
 #[cfg_attr(docsrs, doc(cfg(target_os = "windows")))]
 mod windows;
 
-use libc::{c_int, size_t, wchar_t};
+use libc::wchar_t;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
@@ -80,9 +92,12 @@ use std::sync::Mutex;
 
 pub use error::HidError;
 
-pub type HidResult<T> = Result<T, HidError>;
+#[cfg(hidapi)]
+use hidapi::HidApiBackend;
+#[cfg(feature = "linux-native")]
+use linux_native::HidApiBackend;
 
-const STRING_BUF_LEN: usize = 128;
+pub type HidResult<T> = Result<T, HidError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InitState {
@@ -106,6 +121,7 @@ fn lazy_init(do_enumerate: bool) -> HidResult<()> {
             }
 
             // Initialize the HID
+            #[cfg(hidapi)]
             if unsafe { ffi::hid_init() } == -1 {
                 return Err(HidError::InitializationError);
             }
@@ -152,7 +168,7 @@ impl HidApi {
     pub fn new() -> HidResult<Self> {
         lazy_init(true)?;
 
-        let device_list = unsafe { HidApi::get_hid_device_info_vector()? };
+        let device_list = HidApiBackend::get_hid_device_info_vector()?;
 
         Ok(HidApi { device_list })
     }
@@ -176,29 +192,9 @@ impl HidApi {
     /// Refresh devices list and information about them (to access them use
     /// `device_list()` method)
     pub fn refresh_devices(&mut self) -> HidResult<()> {
-        let device_list = unsafe { HidApi::get_hid_device_info_vector()? };
+        let device_list = HidApiBackend::get_hid_device_info_vector()?;
         self.device_list = device_list;
         Ok(())
-    }
-
-    unsafe fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
-        let mut device_vector = Vec::with_capacity(8);
-
-        let enumeration = ffi::hid_enumerate(0, 0);
-        {
-            let mut current_device = enumeration;
-
-            while !current_device.is_null() {
-                device_vector.push(conv_hid_device_info(current_device)?);
-                current_device = (*current_device).next;
-            }
-        }
-
-        if !enumeration.is_null() {
-            ffi::hid_free_enumeration(enumeration);
-        }
-
-        Ok(device_vector)
     }
 
     /// Returns iterator containing information about attached HID devices.
@@ -212,54 +208,23 @@ impl HidApi {
     /// first one found in the internal device list will be used. There are however
     /// no guarantees, which device this will be.
     pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
-        let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
-
-        if device.is_null() {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice {
-                _hid_device: device,
-            })
-        }
+        let dev = HidApiBackend::open(vid, pid)?;
+        Ok(HidDevice::from_backend(Box::new(dev)))
     }
 
     /// Open a HID device using a Vendor ID (VID), Product ID (PID) and
     /// a serial number.
     pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
-        let mut chars = sn.chars().map(|c| c as wchar_t).collect::<Vec<_>>();
-        chars.push(0 as wchar_t);
-        let device = unsafe { ffi::hid_open(vid, pid, chars.as_ptr()) };
-        if device.is_null() {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice {
-                _hid_device: device,
-            })
-        }
+        let dev = HidApiBackend::open_serial(vid, pid, sn)?;
+        Ok(HidDevice::from_backend(Box::new(dev)))
     }
 
     /// The path name be determined by inspecting the device list available with [HidApi::devices()](struct.HidApi.html#method.devices)
     ///
     /// Alternatively a platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
     pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
-        let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
-
-        if device.is_null() {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice {
-                _hid_device: device,
-            })
-        }
+        let dev = HidApiBackend::open_path(device_path)?;
+        Ok(HidDevice::from_backend(Box::new(dev)))
     }
 
     /// Open a HID device using libusb_wrap_sys_device.
@@ -273,9 +238,7 @@ impl HidApi {
                 Err(e) => Err(e),
             }
         } else {
-            Ok(HidDevice {
-                _hid_device: device,
-            })
+            Ok(HidDevice::from_raw(device))
         }
     }
 
@@ -287,74 +250,16 @@ impl HidApi {
     /// When `Err()` is returned, then acquiring the error string from the hidapi C
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
+    #[cfg(hidapi)]
     pub fn check_error(&self) -> HidResult<HidError> {
-        Ok(HidError::HidApiError {
-            message: unsafe {
-                match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
-                    WcharString::String(s) => s,
-                    _ => return Err(HidError::HidApiErrorEmpty),
-                }
-            },
-        })
+        HidApiBackend::check_error()
     }
 }
 
-/// Converts a pointer to a `*const wchar_t` to a WcharString.
-unsafe fn wchar_to_string(wstr: *const wchar_t) -> WcharString {
-    if wstr.is_null() {
-        return WcharString::None;
-    }
-
-    let mut char_vector: Vec<char> = Vec::with_capacity(8);
-    let mut raw_vector: Vec<wchar_t> = Vec::with_capacity(8);
-    let mut index: isize = 0;
-    let mut invalid_char = false;
-
-    let o = |i| *wstr.offset(i);
-
-    while o(index) != 0 {
-        use std::char;
-
-        raw_vector.push(*wstr.offset(index));
-
-        if !invalid_char {
-            if let Some(c) = char::from_u32(o(index) as u32) {
-                char_vector.push(c);
-            } else {
-                invalid_char = true;
-            }
-        }
-
-        index += 1;
-    }
-
-    if !invalid_char {
-        WcharString::String(char_vector.into_iter().collect())
-    } else {
-        WcharString::Raw(raw_vector)
-    }
-}
-
-/// Convert the CFFI `HidDeviceInfo` struct to a native `HidDeviceInfo` struct
-unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidResult<DeviceInfo> {
-    Ok(DeviceInfo {
-        path: CStr::from_ptr((*src).path).to_owned(),
-        vendor_id: (*src).vendor_id,
-        product_id: (*src).product_id,
-        serial_number: wchar_to_string((*src).serial_number),
-        release_number: (*src).release_number,
-        manufacturer_string: wchar_to_string((*src).manufacturer_string),
-        product_string: wchar_to_string((*src).product_string),
-        usage_page: (*src).usage_page,
-        usage: (*src).usage,
-        interface_number: (*src).interface_number,
-        bus_type: (*src).bus_type,
-    })
-}
-
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum WcharString {
     String(String),
+    #[cfg_attr(feature = "linux-native", allow(dead_code))]
     Raw(Vec<wchar_t>),
     None,
 }
@@ -514,39 +419,76 @@ impl fmt::Debug for DeviceInfo {
     }
 }
 
-/// Object for accessing HID device
+/// Trait which the different backends must implement
+trait HidDeviceBackendBase {
+    #[cfg(hidapi)]
+    fn check_error(&self) -> HidResult<HidError>;
+    fn write(&self, data: &[u8]) -> HidResult<usize>;
+    fn read(&self, buf: &mut [u8]) -> HidResult<usize>;
+    fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize>;
+    fn send_feature_report(&self, data: &[u8]) -> HidResult<()>;
+    fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize>;
+    fn set_blocking_mode(&self, blocking: bool) -> HidResult<()>;
+    fn get_device_info(&self) -> HidResult<DeviceInfo>;
+    fn get_manufacturer_string(&self) -> HidResult<Option<String>>;
+    fn get_product_string(&self) -> HidResult<Option<String>>;
+    fn get_serial_number_string(&self) -> HidResult<Option<String>>;
+
+    fn get_indexed_string(&self, _index: i32) -> HidResult<Option<String>> {
+        Err(HidError::HidApiError {
+            message: "get_indexed_string: not supported".to_string(),
+        })
+    }
+}
+
+/// A trait with the extra methods that are available on macOS
+#[cfg(target_os = "macos")]
+trait HidDeviceBackendMacos {
+    /// Get the location ID for a [`HidDevice`] device.
+    fn get_location_id(&self) -> HidResult<u32>;
+
+    /// Check if the device was opened in exclusive mode.
+    fn is_open_exclusive(&self) -> HidResult<bool>;
+}
+
+/// A trait with the extra methods that are available on macOS
+#[cfg(target_os = "windows")]
+trait HidDeviceBackendWindows {
+    /// Get the container ID for a HID device
+    fn get_container_id(&self) -> HidResult<GUID>;
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+trait HidDeviceBackend: HidDeviceBackendBase {}
+#[cfg(target_os = "macos")]
+trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendMacos {}
+#[cfg(target_os = "windows")]
+trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendWindows {}
+
+/// Automatically implement the top trait
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase {}
+
+/// Automatically implement the top trait
+#[cfg(target_os = "macos")]
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendMacos {}
+
+/// Automatically implement the top trait
+#[cfg(target_os = "windows")]
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendWindows {}
+
 pub struct HidDevice {
-    _hid_device: *mut ffi::HidDevice,
-}
-
-unsafe impl Send for HidDevice {}
-
-impl Debug for HidDevice {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HidDevice").finish()
-    }
-}
-
-impl Drop for HidDevice {
-    fn drop(&mut self) {
-        unsafe { ffi::hid_close(self._hid_device) }
-    }
+    inner: Box<dyn HidDeviceBackend>,
 }
 
 impl HidDevice {
-    /// Check size returned by other methods, if it's equal to -1 check for
-    /// error and return Error, otherwise return size as unsigned number
-    fn check_size(&self, res: i32) -> HidResult<usize> {
-        if res == -1 {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(res as usize)
-        }
+    fn from_backend(inner: Box<dyn HidDeviceBackend>) -> Self {
+        Self { inner }
     }
+}
 
+// Methods that use the backend
+impl HidDevice {
     /// Get the last error, which happened in the underlying hidapi C library.
     ///
     /// The `Ok()` variant of the result will contain a [HidError::HidApiError](enum.HidError.html).
@@ -554,15 +496,9 @@ impl HidDevice {
     /// When `Err()` is returned, then acquiring the error string from the hidapi C
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
+    #[cfg(hidapi)]
     pub fn check_error(&self) -> HidResult<HidError> {
-        Ok(HidError::HidApiError {
-            message: unsafe {
-                match wchar_to_string(ffi::hid_error(self._hid_device)) {
-                    WcharString::String(s) => s,
-                    _ => return Err(HidError::HidApiErrorEmpty),
-                }
-            },
-        })
+        self.inner.check_error()
     }
 
     /// The first byte of `data` must contain the Report ID. For
@@ -578,19 +514,14 @@ impl HidDevice {
     /// one exists. If it does not, it will send the data through
     /// the Control Endpoint (Endpoint 0).
     pub fn write(&self, data: &[u8]) -> HidResult<usize> {
-        if data.is_empty() {
-            return Err(HidError::InvalidZeroSizeData);
-        }
-        let res = unsafe { ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t) };
-        self.check_size(res)
+        self.inner.write(data)
     }
 
     /// Input reports are returned to the host through the 'INTERRUPT IN'
     /// endpoint. The first byte will contain the Report number if the device
     /// uses numbered reports.
     pub fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let res = unsafe { ffi::hid_read(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t) };
-        self.check_size(res)
+        self.inner.read(buf)
     }
 
     /// Input reports are returned to the host through the 'INTERRUPT IN'
@@ -598,15 +529,7 @@ impl HidDevice {
     /// uses numbered reports. Timeout measured in milliseconds, set -1 for
     /// blocking wait.
     pub fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        let res = unsafe {
-            ffi::hid_read_timeout(
-                self._hid_device,
-                buf.as_mut_ptr(),
-                buf.len() as size_t,
-                timeout,
-            )
-        };
-        self.check_size(res)
+        self.inner.read_timeout(buf, timeout)
     }
 
     /// Send a Feature report to the device.
@@ -621,31 +544,14 @@ impl HidDevice {
     /// do not use numbered reports), followed by the report data (16 bytes).
     /// In this example, the length passed in would be 17.
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
-        if data.is_empty() {
-            return Err(HidError::InvalidZeroSizeData);
-        }
-        let res = unsafe {
-            ffi::hid_send_feature_report(self._hid_device, data.as_ptr(), data.len() as size_t)
-        };
-        let res = self.check_size(res)?;
-        if res != data.len() {
-            Err(HidError::IncompleteSendError {
-                sent: res,
-                all: data.len(),
-            })
-        } else {
-            Ok(())
-        }
+        self.inner.send_feature_report(data)
     }
 
     /// Set the first byte of `buf` to the 'Report ID' of the report to be read.
     /// Upon return, the first byte will still contain the Report ID, and the
     /// report data will start in `buf[1]`.
     pub fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let res = unsafe {
-            ffi::hid_get_feature_report(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t)
-        };
-        self.check_size(res)
+        self.inner.get_feature_report(buf)
     }
 
     /// Set the device handle to be in blocking or in non-blocking mode. In
@@ -654,87 +560,31 @@ impl HidDevice {
     /// wait (block) until there is data to read before returning.
     /// Modes can be changed at any time.
     pub fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
-        let res = unsafe {
-            ffi::hid_set_nonblocking(self._hid_device, if blocking { 0i32 } else { 1i32 })
-        };
-        if res == -1 {
-            Err(HidError::SetBlockingModeError {
-                mode: match blocking {
-                    true => "blocking",
-                    false => "not blocking",
-                },
-            })
-        } else {
-            Ok(())
-        }
+        self.inner.set_blocking_mode(blocking)
     }
 
     /// Get The Manufacturer String from a HID device.
     pub fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
-        let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {
-            ffi::hid_get_manufacturer_string(
-                self._hid_device,
-                buf.as_mut_ptr(),
-                STRING_BUF_LEN as size_t,
-            )
-        };
-        let res = self.check_size(res)?;
-        unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        self.inner.get_manufacturer_string()
     }
 
     /// Get The Manufacturer String from a HID device.
     pub fn get_product_string(&self) -> HidResult<Option<String>> {
-        let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {
-            ffi::hid_get_product_string(
-                self._hid_device,
-                buf.as_mut_ptr(),
-                STRING_BUF_LEN as size_t,
-            )
-        };
-        let res = self.check_size(res)?;
-        unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        self.inner.get_product_string()
     }
 
     /// Get The Serial Number String from a HID device.
     pub fn get_serial_number_string(&self) -> HidResult<Option<String>> {
-        let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {
-            ffi::hid_get_serial_number_string(
-                self._hid_device,
-                buf.as_mut_ptr(),
-                STRING_BUF_LEN as size_t,
-            )
-        };
-        let res = self.check_size(res)?;
-        unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        self.inner.get_serial_number_string()
     }
 
     /// Get a string from a HID device, based on its string index.
     pub fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
-        let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {
-            ffi::hid_get_indexed_string(
-                self._hid_device,
-                index as c_int,
-                buf.as_mut_ptr(),
-                STRING_BUF_LEN,
-            )
-        };
-        let res = self.check_size(res)?;
-        unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        self.inner.get_indexed_string(index)
     }
 
     /// Get [`DeviceInfo`] from a HID device.
     pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
-        let raw_device = unsafe { ffi::hid_get_device_info(self._hid_device) };
-        if raw_device.is_null() {
-            match self.check_error() {
-                Ok(err) | Err(err) => return Err(err),
-            }
-        }
-
-        unsafe { conv_hid_device_info(raw_device) }
+        self.inner.get_device_info()
     }
 }

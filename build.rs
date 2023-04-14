@@ -46,7 +46,7 @@ fn compile_linux() {
     // First check the features enabled for the crate.
     // Only one linux backend should be enabled at a time.
 
-    let avail_backends: [(&'static str, Box<dyn Fn()>); 4] = [
+    let avail_backends: [(&'static str, Box<dyn Fn()>); 5] = [
         (
             "LINUX_STATIC_HIDRAW",
             Box::new(|| {
@@ -57,6 +57,7 @@ fn compile_linux() {
                     .include("etc/hidapi/hidapi");
                 pkg_config::probe_library("libudev").expect("Unable to find libudev");
                 config.compile("libhidapi.a");
+                println!("cargo:rustc-cfg=hidapi");
             }),
         ),
         (
@@ -77,12 +78,14 @@ fn compile_linux() {
                 }
                 config.compile("libhidapi.a");
                 println!("cargo:rustc-cfg=libusb");
+                println!("cargo:rustc-cfg=hidapi");
             }),
         ),
         (
             "LINUX_SHARED_HIDRAW",
             Box::new(|| {
                 pkg_config::probe_library("hidapi-hidraw").expect("Unable to find hidapi-hidraw");
+                println!("cargo:rustc-cfg=hidapi");
             }),
         ),
         (
@@ -90,6 +93,13 @@ fn compile_linux() {
             Box::new(|| {
                 pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
                 println!("cargo:rustc-cfg=libusb");
+                println!("cargo:rustc-cfg=hidapi");
+            }),
+        ),
+        (
+            "LINUX_NATIVE",
+            Box::new(|| {
+                // The udev crate takes care of finding its library
             }),
         ),
     ];
@@ -119,11 +129,13 @@ fn compile_linux() {
 fn compile_freebsd() {
     pkg_config::probe_library("hidapi").expect("Unable to find hidapi");
     println!("cargo:rustc-cfg=libusb");
+    println!("cargo:rustc-cfg=hidapi");
 }
 
 fn compile_openbsd() {
     pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi");
     println!("cargo:rustc-cfg=libusb");
+    println!("cargo:rustc-cfg=hidapi");
 }
 
 fn compile_illumos() {
@@ -169,6 +181,7 @@ fn compile_illumos() {
     (backends.next().unwrap().1)();
 
     println!("cargo:rustc-cfg=libusb");
+    println!("cargo:rustc-cfg=hidapi");
 }
 
 fn compile_windows() {
@@ -191,6 +204,7 @@ fn compile_macos() {
         .file("etc/hidapi/mac/hid.c")
         .include("etc/hidapi/hidapi")
         .compile("libhidapi.a");
+    println!("cargo:rustc-cfg=hidapi");
     println!("cargo:rustc-link-lib=framework=IOKit");
     println!("cargo:rustc-link-lib=framework=CoreFoundation");
     println!("cargo:rustc-link-lib=framework=AppKit")
