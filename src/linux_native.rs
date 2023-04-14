@@ -2,10 +2,9 @@
 
 use std::{
     cell::{Cell, Ref, RefCell},
-    convert::TryInto,
     ffi::{CStr, CString, OsStr, OsString},
     fs::{File, OpenOptions},
-    io::Read,
+    io::{Cursor, Read, Seek, SeekFrom},
     os::{
         fd::{AsRawFd, OwnedFd},
         unix::{ffi::OsStringExt, fs::OpenOptionsExt},
@@ -24,9 +23,6 @@ use super::{
     ioctl::{hidraw_ioc_get_feature, hidraw_ioc_grdescsize, hidraw_ioc_set_feature},
     BusType, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString,
 };
-
-// From linux/hid.h
-const HID_MAX_DESCRIPTOR_SIZE: usize = 4096;
 
 // Bus values from linux/input.h
 const BUS_USB: u16 = 0x03;
@@ -201,32 +197,23 @@ fn fill_in_usb(device: &udev::Device, info: DeviceInfo, name: &OsStr) -> DeviceI
     }
 }
 
-// From linux/hidraw.h
-struct HidrawReportDescriptor {
-    size: u32,
-    value: [u8; HID_MAX_DESCRIPTOR_SIZE],
-}
+struct HidrawReportDescriptor(Vec<u8>);
 
 impl Default for HidrawReportDescriptor {
     fn default() -> Self {
-        Self {
-            size: 0,
-            value: [0u8; HID_MAX_DESCRIPTOR_SIZE],
-        }
+        Self(Vec::new())
     }
 }
 
 impl HidrawReportDescriptor {
     /// Open and parse given the "base" sysfs of the device
     pub fn from_syspath(syspath: &Path) -> HidResult<Self> {
-        let mut descriptor = HidrawReportDescriptor::default();
-
         let path = syspath.join("device/report_descriptor");
         let mut f = File::open(path)?;
-        let len = f.read(&mut descriptor.value)?;
-        descriptor.size = len as u32;
+        let mut buf = Vec::new();
+        f.read_to_end(&mut buf)?;
 
-        Ok(descriptor)
+        Ok(HidrawReportDescriptor(buf))
     }
 
     /// Create a descriptor from a slice
@@ -235,73 +222,51 @@ impl HidrawReportDescriptor {
     /// descriptor
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn from_slice(value: &[u8]) -> HidResult<Self> {
-        let size: u32 = match value.len().try_into() {
-            Ok(v) => v,
-            Err(_) => {
-                return Err(HidError::HidApiError {
-                    message: "HID report descriptor over 4kB".into(),
-                })
-            }
-        };
-
-        let mut desc = Self {
-            size,
-            ..Default::default()
-        };
-        desc.value[..value.len()].copy_from_slice(value);
-
-        Ok(desc)
+        Ok(HidrawReportDescriptor(value.to_vec()))
     }
 
     pub fn usages(&self) -> impl Iterator<Item = (u16, u16)> + '_ {
         UsageIterator {
-            initial: true,
             usage_page: 0,
-            value: &self.value,
+            cursor: Cursor::new(&self.0),
         }
     }
 }
 
 /// Iterates over the values in a HidrawReportDescriptor
 struct UsageIterator<'a> {
-    initial: bool,
     usage_page: u16,
-    value: &'a [u8],
+    cursor: Cursor<&'a Vec<u8>>,
 }
 
 impl<'a> Iterator for UsageIterator<'a> {
     type Item = (u16, u16);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (usage_page, page, advanced) =
-            match next_hid_usage(self.value, self.initial, self.usage_page) {
-                Some(n) => n,
-                None => return None,
-            };
+        let (usage_page, page) = match next_hid_usage(&mut self.cursor, self.usage_page) {
+            Some(n) => n,
+            None => return None,
+        };
 
         self.usage_page = usage_page;
-        self.initial = false;
-        self.value = &self.value[advanced..];
         Some((usage_page, page))
     }
 }
 
 // This comes from hidapi which apparently comes from Apple's implementation of
 // this
-fn next_hid_usage(
-    mut desc: &[u8],
-    initial: bool,
-    mut usage_page: u16,
-) -> Option<(u16, u16, usize)> {
+fn next_hid_usage(cursor: &mut Cursor<&Vec<u8>>, mut usage_page: u16) -> Option<(u16, u16)> {
     let mut usage = None;
     let mut usage_pair = None;
-    let mut advanced = 0_usize;
+    let initial = cursor.position() == 0;
 
-    while !desc.is_empty() {
-        let key = desc[0];
+    while let Some(Ok(key)) = cursor.bytes().next() {
+        // The amount to skip is calculated based off of the start of the
+        // iteration so we need to keep track of that.
+        let position = cursor.position() - 1;
         let key_cmd = key & 0xfc;
 
-        let (data_len, key_size) = match hid_item_size(desc) {
+        let (data_len, key_size) = match hid_item_size(key, cursor) {
             Some(v) => v,
             None => return None,
         };
@@ -309,11 +274,11 @@ fn next_hid_usage(
         match key_cmd {
             // Usage Page 6.2.2.7 (Global)
             0x4 => {
-                usage_page = hid_report_bytes(desc, data_len) as u16;
+                usage_page = hid_report_bytes(cursor, data_len) as u16;
             }
             // Usage 6.2.2.8 (Local)
             0x8 => {
-                usage = Some(hid_report_bytes(desc, data_len) as u16);
+                usage = Some(hid_report_bytes(cursor, data_len) as u16);
             }
             // Collection 6.2.2.4 (Main)
             0xa0 => {
@@ -329,22 +294,27 @@ fn next_hid_usage(
             // Feature 6.2.2.4 (Main)
 		        0xb0 |
             // End Collection 6.2.2.4 (Main)
-		        0xc0  =>  {
-			          // Usage is a Local Item, unset it
+	    0xc0  =>  {
+		// Usage is a Local Item, unset it
                 usage.take();
             }
             _ => {}
         }
 
-        advanced += data_len + key_size;
-        desc = &desc[(data_len + key_size)..];
+        if cursor
+            .seek(SeekFrom::Start(position + (data_len + key_size) as u64))
+            .is_err()
+        {
+            return None;
+        }
+
         if let Some((usage_page, usage)) = usage_pair {
-            return Some((usage_page, usage, advanced));
+            return Some((usage_page, usage));
         }
     }
 
     if let (true, Some(usage)) = (initial, usage) {
-        return Some((usage_page, usage, advanced));
+        return Some((usage_page, usage));
     }
 
     None
@@ -353,13 +323,11 @@ fn next_hid_usage(
 /// Gets the size of the HID item at the given position
 ///
 /// Returns data_len and key_size when successful
-fn hid_item_size(desc: &[u8]) -> Option<(usize, usize)> {
-    let key = desc[0];
-
+fn hid_item_size(key: u8, cursor: &mut Cursor<&Vec<u8>>) -> Option<(usize, usize)> {
     // Long Item. Next byte contains the length of the data section.
     if (key & 0xf0) == 0xf0 {
-        if !desc.is_empty() {
-            return Some((desc[1].into(), 3));
+        if let Some(Ok(len)) = cursor.bytes().next() {
+            return Some((len.into(), 3));
         }
 
         // Malformed report
@@ -368,7 +336,7 @@ fn hid_item_size(desc: &[u8]) -> Option<(usize, usize)> {
 
     // Short Item. Bottom two bits contains the size code
     match key & 0x03 {
-        v @ 0 | v @ 1 | v @ 2 => Some((v.into(), 1)),
+        v @ 0..=2 => Some((v.into(), 1)),
         3 => Some((4, 1)),
         _ => unreachable!(), // & 0x03 means this can't happen
     }
@@ -377,13 +345,12 @@ fn hid_item_size(desc: &[u8]) -> Option<(usize, usize)> {
 /// Get the bytes from a HID report descriptor
 ///
 /// Must only be called with `num_bytes` 0, 1, 2 or 4.
-fn hid_report_bytes(desc: &[u8], num_bytes: usize) -> u32 {
-    if num_bytes >= desc.len() {
+fn hid_report_bytes(cursor: &mut Cursor<&Vec<u8>>, num_bytes: usize) -> u32 {
+    let mut bytes: [u8; 4] = [0; 4];
+    if cursor.read_exact(&mut bytes[..num_bytes]).is_err() {
         return 0;
     }
 
-    let mut bytes: [u8; 4] = [0; 4];
-    bytes[..num_bytes].copy_from_slice(&desc[1..=num_bytes]);
     u32::from_le_bytes(bytes)
 }
 
