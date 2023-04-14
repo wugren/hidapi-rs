@@ -459,15 +459,15 @@ trait HidDeviceBackendWindows {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-trait HidDeviceBackend: HidDeviceBackendBase {}
+trait HidDeviceBackend: HidDeviceBackendBase + Send {}
 #[cfg(target_os = "macos")]
-trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendMacos {}
+trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendMacos + Send {}
 #[cfg(target_os = "windows")]
-trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendWindows {}
+trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendWindows + Send {}
 
 /// Automatically implement the top trait
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase {}
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + Send {}
 
 /// Automatically implement the top trait
 #[cfg(target_os = "macos")]
