@@ -272,11 +272,17 @@ fn next_hid_usage(cursor: &mut Cursor<&Vec<u8>>, mut usage_page: u16) -> Option<
         match key_cmd {
             // Usage Page 6.2.2.7 (Global)
             0x4 => {
-                usage_page = hid_report_bytes(cursor, data_len) as u16;
+                usage_page = match hid_report_bytes(cursor, data_len) {
+                    Ok(v) => v as u16,
+                    Err(_) => break,
+                }
             }
             // Usage 6.2.2.8 (Local)
             0x8 => {
-                usage = Some(hid_report_bytes(cursor, data_len) as u16);
+                usage = match hid_report_bytes(cursor, data_len) {
+                    Ok(v) => Some(v as u16),
+                    Err(_) => break,
+                }
             }
             // Collection 6.2.2.4 (Main)
             0xa0 => {
@@ -343,13 +349,11 @@ fn hid_item_size(key: u8, cursor: &mut Cursor<&Vec<u8>>) -> Option<(usize, usize
 /// Get the bytes from a HID report descriptor
 ///
 /// Must only be called with `num_bytes` 0, 1, 2 or 4.
-fn hid_report_bytes(cursor: &mut Cursor<&Vec<u8>>, num_bytes: usize) -> u32 {
+fn hid_report_bytes(cursor: &mut Cursor<&Vec<u8>>, num_bytes: usize) -> HidResult<u32> {
     let mut bytes: [u8; 4] = [0; 4];
-    if cursor.read_exact(&mut bytes[..num_bytes]).is_err() {
-        return 0;
-    }
+    cursor.read_exact(&mut bytes[..num_bytes])?;
 
-    u32::from_le_bytes(bytes)
+    Ok(u32::from_le_bytes(bytes))
 }
 
 /// Get the attribute from the device and convert it into a [`WcharString`].
