@@ -12,14 +12,29 @@ use crate::DeviceInfo;
 
 #[derive(Debug)]
 pub enum HidError {
-    HidApiError { message: String },
+    HidApiError {
+        message: String,
+    },
     HidApiErrorEmpty,
-    FromWideCharError { wide_char: wchar_t },
+    FromWideCharError {
+        wide_char: wchar_t,
+    },
     InitializationError,
     InvalidZeroSizeData,
-    IncompleteSendError { sent: usize, all: usize },
-    SetBlockingModeError { mode: &'static str },
-    OpenHidDeviceWithDeviceInfoError { device_info: Box<DeviceInfo> },
+    IncompleteSendError {
+        sent: usize,
+        all: usize,
+    },
+    SetBlockingModeError {
+        mode: &'static str,
+    },
+    OpenHidDeviceWithDeviceInfoError {
+        device_info: Box<DeviceInfo>,
+    },
+    /// An IO error or a system error that can be represented as such
+    IoError {
+        error: std::io::Error,
+    },
 }
 
 impl Display for HidError {
@@ -45,6 +60,9 @@ impl Display for HidError {
             HidError::OpenHidDeviceWithDeviceInfoError { device_info } => {
                 write!(f, "Can not open hid device with: {:?}", *device_info)
             }
+            HidError::IoError { error } => {
+                write!(f, "{error}")
+            }
         }
     }
 }
@@ -53,17 +71,13 @@ impl Error for HidError {}
 
 impl From<std::io::Error> for HidError {
     fn from(e: std::io::Error) -> Self {
-        Self::HidApiError {
-            message: format!("{e}"),
-        }
+        Self::IoError { error: e }
     }
 }
 
 #[cfg(feature = "linux-native")]
 impl From<nix::errno::Errno> for HidError {
     fn from(e: nix::errno::Errno) -> Self {
-        Self::HidApiError {
-            message: format!("{e}"),
-        }
+        Self::IoError { error: e.into() }
     }
 }
