@@ -386,19 +386,33 @@ fn osstring_to_string(s: OsString) -> WcharString {
     }
 }
 
+/// Return the value or exit the function
+///
+/// If the iterator return Some(Ok(n)) then the expression returns that value.
+/// Otherwise we exit out of the function with None.
+///
+/// This is like let-else but doesn't require a recent compiler.
+macro_rules! next_or_return {
+    ($iter:ident) => {
+        match $iter.next() {
+            Some(Ok(n)) => n,
+            _ => return None,
+        }
+    };
+}
+
 /// Parse a HID_ID string to find the bus type, the vendor and product id
 ///
 /// These strings would be of the format
 ///     type vendor   product
 ///     0003:000005AC:00008242
 fn parse_hid_vid_pid(s: &str) -> Option<(u16, u16, u16)> {
-    let elems: Vec<Result<u16, _>> = s.split(':').map(|s| u16::from_str_radix(s, 16)).collect();
-    if elems.len() != 3 || !elems.iter().all(Result::is_ok) {
-        return None;
-    };
+    let mut elems = s.split(':').map(|s| u16::from_str_radix(s, 16));
+    let devtype = next_or_return!(elems);
+    let vendor = next_or_return!(elems);
+    let product = next_or_return!(elems);
 
-    let numbers: Vec<u16> = elems.into_iter().map(|n| n.unwrap()).collect();
-    Some((numbers[0], numbers[1], numbers[2]))
+    Some((devtype, vendor, product))
 }
 
 /// Object for accessing the HID device
