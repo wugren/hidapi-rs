@@ -41,7 +41,7 @@
 //! - `linux-static-hidraw`: uses statically linked `hidraw` backend on Linux (default)
 //! - `linux-shared-libusb`: uses dynamically linked `libusb` backend on Linux
 //! - `linux-shared-hidraw`: uses dynamically linked `hidraw` backend on Linux
-//! - `linux`: talks to hidraw directly without using `hidapi` C library
+//! - `linux-native`: talks to hidraw directly without using the `hidapi` C library
 //! - `illumos-static-libusb`: uses statically linked `libusb` backend on Illumos (default)
 //! - `illumos-shared-libusb`: uses statically linked `hidraw` backend on Illumos
 //! - `macos-shared-device`: enables shared access to HID devices on MacOS
