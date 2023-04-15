@@ -264,9 +264,9 @@ enum WcharString {
     None,
 }
 
-impl Into<Option<String>> for WcharString {
-    fn into(self) -> Option<String> {
-        match self {
+impl From<WcharString> for Option<String> {
+    fn from(val: WcharString) -> Self {
+        match val {
             WcharString::String(s) => Some(s),
             _ => None,
         }
