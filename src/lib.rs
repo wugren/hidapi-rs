@@ -471,11 +471,11 @@ impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + Send {}
 
 /// Automatically implement the top trait
 #[cfg(target_os = "macos")]
-impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendMacos {}
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendMacos + Send {}
 
 /// Automatically implement the top trait
 #[cfg(target_os = "windows")]
-impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendWindows {}
+impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendWindows + Send {}
 
 pub struct HidDevice {
     inner: Box<dyn HidDeviceBackend>,
