@@ -238,7 +238,8 @@ impl HidApi {
                 Err(e) => Err(e),
             }
         } else {
-            Ok(HidDevice::from_raw(device))
+            let dev = hidapi::HidDevice::from_raw(device);
+            Ok(HidDevice::from_backend(Box::new(dev)))
         }
     }
 
