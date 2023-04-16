@@ -33,7 +33,7 @@ fn decode_temperature(value: u16) -> f32 {
     (value as f32) * 0.0625 - 273.15
 }
 
-fn decode_buf(buf: [u8; PACKET_SIZE]) -> CO2Result {
+fn decrypt(buf: [u8; PACKET_SIZE]) -> [u8; PACKET_SIZE] {
     let mut res: [u8; PACKET_SIZE] = [
         (buf[3] << 5) | (buf[2] >> 3),
         (buf[2] << 5) | (buf[4] >> 3),
@@ -50,6 +50,17 @@ fn decode_buf(buf: [u8; PACKET_SIZE]) -> CO2Result {
         let sub_val: u8 = (magic_word[i] << 4) | (magic_word[i] >> 4);
         res[i] = u8::overflowing_sub(res[i], sub_val).0;
     }
+
+    res
+}
+
+fn decode_buf(buf: [u8; PACKET_SIZE]) -> CO2Result {
+    // Do we need to decrypt the data?
+    let res = if buf[4] == 0x0d {
+        buf
+    } else {
+        decrypt(buf)
+    };
 
     if res[4] != 0x0d {
         return CO2Result::Error("Unexpected data (data[4] != 0x0d)");
