@@ -92,7 +92,7 @@ use std::sync::Mutex;
 pub use error::HidError;
 
 #[cfg(hidapi)]
-use hidapi::HidApiBackend;
+use crate::hidapi::HidApiBackend;
 #[cfg(feature = "linux-native")]
 use linux_native::HidApiBackend;
 
