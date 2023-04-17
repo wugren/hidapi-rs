@@ -252,6 +252,7 @@ impl HidApi {
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
     #[cfg(hidapi)]
+    #[deprecated(since = "2.2.3", note = "use the return values from the other methods")]
     pub fn check_error(&self) -> HidResult<HidError> {
         HidApiBackend::check_error()
     }
@@ -498,6 +499,7 @@ impl HidDevice {
     /// library failed. The contained [HidError](enum.HidError.html) is the cause, why no error could
     /// be fetched.
     #[cfg(hidapi)]
+    #[deprecated(since = "2.2.3", note = "use the return values from the other methods")]
     pub fn check_error(&self) -> HidResult<HidError> {
         self.inner.check_error()
     }
