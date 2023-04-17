@@ -56,11 +56,7 @@ fn decrypt(buf: [u8; PACKET_SIZE]) -> [u8; PACKET_SIZE] {
 
 fn decode_buf(buf: [u8; PACKET_SIZE]) -> CO2Result {
     // Do we need to decrypt the data?
-    let res = if buf[4] == 0x0d {
-        buf
-    } else {
-        decrypt(buf)
-    };
+    let res = if buf[4] == 0x0d { buf } else { decrypt(buf) };
 
     if res[4] != 0x0d {
         return CO2Result::Error("Unexpected data (data[4] != 0x0d)");

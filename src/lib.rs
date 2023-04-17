@@ -71,8 +71,7 @@ mod ffi;
 
 #[cfg(hidapi)]
 mod hidapi;
-#[cfg(feature = "linux-native")]
-mod ioctl;
+
 #[cfg(feature = "linux-native")]
 #[cfg_attr(docsrs, doc(cfg(feature = "linux-native")))]
 mod linux_native;

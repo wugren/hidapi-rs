@@ -16,6 +16,7 @@ keywords = ["hid", "api", "usb", "binding", "wrapper"]
 build = "build.rs"
 links = "hidapi"
 documentation = "https://docs.rs/hidapi"
+edition = "2021"
 
 [features]
 default = ["linux-static-hidraw", "illumos-static-libusb"]

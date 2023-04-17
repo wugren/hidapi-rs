@@ -1,5 +1,7 @@
 //! This backend uses libudev to discover devices and then talks to hidraw directly
 
+mod ioctl;
+
 use std::{
     cell::{Cell, Ref, RefCell},
     ffi::{CStr, CString, OsStr, OsString},
@@ -19,10 +21,8 @@ use nix::{
     unistd::{read, write},
 };
 
-use super::{
-    ioctl::{hidraw_ioc_get_feature, hidraw_ioc_grdescsize, hidraw_ioc_set_feature},
-    BusType, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString,
-};
+use super::{BusType, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString};
+use ioctl::{hidraw_ioc_get_feature, hidraw_ioc_grdescsize, hidraw_ioc_set_feature};
 
 // Bus values from linux/input.h
 const BUS_USB: u16 = 0x03;
@@ -195,13 +195,8 @@ fn fill_in_usb(device: &udev::Device, info: DeviceInfo, name: &OsStr) -> DeviceI
     }
 }
 
+#[derive(Default)]
 struct HidrawReportDescriptor(Vec<u8>);
-
-impl Default for HidrawReportDescriptor {
-    fn default() -> Self {
-        Self(Vec::new())
-    }
-}
 
 impl HidrawReportDescriptor {
     /// Open and parse given the "base" sysfs of the device
@@ -521,11 +516,14 @@ impl HidDeviceBackendBase for HidDevice {
             return Err(HidError::InvalidZeroSizeData);
         }
 
+        // Have to crate owned buffer, because its not safe to cast shared
+        // reference to mutable reference, even if the underlying function never
+        // tries to mutate it.
+        let mut d = data.to_vec();
+
         // The ioctl is marked as read-write so we need to mess with the
         // mutability even though nothing should get written
-        let res = match unsafe {
-            hidraw_ioc_set_feature(self.fd.as_raw_fd(), &mut *(data as *const _ as *mut _))
-        } {
+        let res = match unsafe { hidraw_ioc_set_feature(self.fd.as_raw_fd(), &mut d) } {
             Ok(n) => n as usize,
             Err(e) => {
                 return Err(HidError::HidApiError {
@@ -588,11 +586,9 @@ impl HidDeviceBackendBase for HidDevice {
         let device = udev::Device::from_syspath(&syspath)?;
         match device_to_hid_device_info(&device) {
             Some(info) => Ok(info[0].clone()),
-            None => {
-                return Err(HidError::HidApiError {
-                    message: "failed to create device info".into(),
-                })
-            }
+            None => Err(HidError::HidApiError {
+                message: "failed to create device info".into(),
+            }),
         }
     }
 }
