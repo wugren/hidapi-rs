@@ -197,6 +197,7 @@ fn compile_windows() {
     }
     cc.compile("libhidapi.a");
     println!("cargo:rustc-link-lib=setupapi");
+    println!("cargo:rustc-cfg=hidapi");
 }
 
 fn compile_macos() {
