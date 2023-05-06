@@ -111,7 +111,7 @@ fn lazy_init(do_enumerate: bool) -> HidResult<()> {
 
     match *init_state {
         InitState::NotInit => {
-            #[cfg(libusb)]
+            #[cfg(all(libusb, not(target_os = "freebsd")))]
             if !do_enumerate {
                 // Do not scan for devices in libusb_init()
                 // Must be set before calling it.
