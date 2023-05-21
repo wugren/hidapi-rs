@@ -482,6 +482,12 @@ pub struct HidDevice {
     inner: Box<dyn HidDeviceBackend>,
 }
 
+impl Debug for HidDevice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HidDevice").finish_non_exhaustive()
+    }
+}
+
 impl HidDevice {
     fn from_backend(inner: Box<dyn HidDeviceBackend>) -> Self {
         Self { inner }
