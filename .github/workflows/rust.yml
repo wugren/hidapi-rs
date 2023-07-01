@@ -14,6 +14,9 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
     strategy:
       fail-fast: false # don't give up on the whole matrix if one variant fails
       matrix:
@@ -53,6 +56,8 @@ jobs:
 
   build-linux-native:
     runs-on: ubuntu-latest
+    env:
+      DEBIAN_FRONTEND: noninteractive
     steps:
     - name: checkout repository and submodules
       uses: actions/checkout@v2
