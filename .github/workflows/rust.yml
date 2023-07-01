@@ -71,3 +71,19 @@ jobs:
       run: cargo build --no-default-features --features linux-native --verbose
     - name: Run tests
       run: cargo test --no-default-features --features linux-native --verbose
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: checkout repository and submodules
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Install rust environment
+      run: |
+        curl.exe --proto "=https" --tlsv1.2 -L -o rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
+        .\rustup-init.exe -y
+    - name: Build
+      run: cargo build --no-default-features --verbose
+    - name: Run tests
+      run: cargo test --no-default-features --verbose
