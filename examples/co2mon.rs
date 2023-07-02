@@ -6,21 +6,19 @@
 ****************************************************************************/
 
 //! Opens a KIT MT 8057 CO2 detector and reads data from it. This
-//! example will not work unless such an HID is plugged in to your system.
+//! example will not work unless such device is plugged into your system.
 
-extern crate hidapi;
-
-use hidapi::{HidApi, HidDevice};
-use std::thread::sleep;
-use std::time::Duration;
+use hidapi::{HidApi, HidError};
+use std::io;
 
 const CODE_TEMPERATURE: u8 = 0x42;
 const CODE_CONCENTRATION: u8 = 0x50;
 const HID_TIMEOUT: i32 = 5000;
-const RETRY_SEC: u64 = 1;
 const DEV_VID: u16 = 0x04d9;
 const DEV_PID: u16 = 0xa052;
 const PACKET_SIZE: usize = 8;
+
+type Packet = [u8; PACKET_SIZE];
 
 enum CO2Result {
     Temperature(f32),
@@ -33,7 +31,7 @@ fn decode_temperature(value: u16) -> f32 {
     (value as f32) * 0.0625 - 273.15
 }
 
-fn decrypt(buf: [u8; PACKET_SIZE]) -> [u8; PACKET_SIZE] {
+fn decrypt(buf: Packet) -> Packet {
     let mut res: [u8; PACKET_SIZE] = [
         (buf[3] << 5) | (buf[2] >> 3),
         (buf[2] << 5) | (buf[4] >> 3),
@@ -48,26 +46,30 @@ fn decrypt(buf: [u8; PACKET_SIZE]) -> [u8; PACKET_SIZE] {
     let magic_word = b"Htemp99e";
     for i in 0..PACKET_SIZE {
         let sub_val: u8 = (magic_word[i] << 4) | (magic_word[i] >> 4);
-        res[i] = u8::overflowing_sub(res[i], sub_val).0;
+        res[i] = u8::wrapping_sub(res[i], sub_val);
     }
 
     res
 }
 
-fn decode_buf(buf: [u8; PACKET_SIZE]) -> CO2Result {
+fn decode_buf(buf: Packet) -> CO2Result {
     // Do we need to decrypt the data?
     let res = if buf[4] == 0x0d { buf } else { decrypt(buf) };
 
-    if res[4] != 0x0d {
+    let kind = res[0];
+    let val = u16::from_be_bytes(res[1..3].try_into().unwrap());
+    let checksum = res[3];
+    let tail = res[4];
+
+    if tail != 0x0d {
         return CO2Result::Error("Unexpected data (data[4] != 0x0d)");
     }
-    let checksum = u8::overflowing_add(u8::overflowing_add(res[0], res[1]).0, res[2]).0;
-    if checksum != res[3] {
+    let checksum_calc = res[0].wrapping_add(res[1]).wrapping_add(res[2]);
+    if checksum != checksum_calc {
         return CO2Result::Error("Checksum error");
     }
 
-    let val: u16 = ((res[1] as u16) << 8) + res[2] as u16;
-    match res[0] {
+    match kind {
         CODE_TEMPERATURE => CO2Result::Temperature(decode_temperature(val)),
         CODE_CONCENTRATION => {
             if val > 3000 {
@@ -80,63 +82,40 @@ fn decode_buf(buf: [u8; PACKET_SIZE]) -> CO2Result {
     }
 }
 
-fn open_device(api: &HidApi) -> HidDevice {
-    loop {
-        match api.open(DEV_VID, DEV_PID) {
-            Ok(dev) => return dev,
-            Err(err) => {
-                println!("{}", err);
-                sleep(Duration::from_secs(RETRY_SEC));
-            }
-        }
+fn invalid_data_err(msg: impl Into<String>) -> HidError {
+    HidError::IoError {
+        error: io::Error::new(io::ErrorKind::InvalidData, msg.into()),
     }
 }
 
-fn main() {
-    let api = HidApi::new().expect("HID API object creation failed");
+fn main() -> Result<(), HidError> {
+    let api = HidApi::new()?;
+    let dev = api.open(DEV_VID, DEV_PID)?;
+    dev.send_feature_report(&[0; PACKET_SIZE])?;
 
-    let dev = open_device(&api);
+    if let Some(manufacturer) = dev.get_manufacturer_string()? {
+        println!("Manufacurer:\t{manufacturer}");
+    }
+    if let Some(product) = dev.get_product_string()? {
+        println!("Product:\t{product}");
+    }
+    if let Some(serial_number) = dev.get_serial_number_string()? {
+        println!("Serial number:\t{serial_number}");
+    }
 
-    dev.send_feature_report(&[0; PACKET_SIZE])
-        .expect("Feature report failed");
-
-    println!(
-        "Manufacurer:\t{:?}",
-        dev.get_manufacturer_string()
-            .expect("Failed to read manufacurer string")
-    );
-    println!(
-        "Product:\t{:?}",
-        dev.get_product_string()
-            .expect("Failed to read product string")
-    );
-    println!(
-        "Serial number:\t{:?}",
-        dev.get_serial_number_string()
-            .expect("Failed to read serial number")
-    );
-
+    let mut buf = [0; PACKET_SIZE];
     loop {
-        let mut buf = [0; PACKET_SIZE];
-        match dev.read_timeout(&mut buf[..], HID_TIMEOUT) {
-            Ok(PACKET_SIZE) => (),
-            Ok(res) => {
-                println!("Error: unexpected length of data: {}/{}", res, PACKET_SIZE);
-                continue;
-            }
-            Err(err) => {
-                println!("Error: {:}", err);
-                sleep(Duration::from_secs(RETRY_SEC));
-                continue;
-            }
+        let n = dev.read_timeout(&mut buf[..], HID_TIMEOUT)?;
+        if n != PACKET_SIZE {
+            let msg = format!("unexpected packet length: {n}/{PACKET_SIZE}");
+            return Err(invalid_data_err(msg));
         }
         match decode_buf(buf) {
-            CO2Result::Temperature(val) => println!("Temp:\t{:?}", val),
-            CO2Result::Concentration(val) => println!("Conc:\t{:?}", val),
+            CO2Result::Temperature(val) => println!("Temp:\t{val}"),
+            CO2Result::Concentration(val) => println!("Conc:\t{val}"),
             CO2Result::Unknown(..) => (),
-            CO2Result::Error(val) => {
-                println!("Error:\t{}", val);
-                sleep(Duration::from_secs(RETRY_SEC));
+            CO2Result::Error(msg) => {
+                return Err(invalid_data_err(msg));
             }
         }
     }
