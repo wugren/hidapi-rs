@@ -37,7 +37,8 @@ udev = { version = "0.7", optional = true }
 nix = { version = "0.26", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-winapi = "0.3.9"
+windows-sys = { version = "0.48", features = ["Win32_Devices_HumanInterfaceDevice", "Win32_Foundation"] }
+# winapi = "0.3.9"
 
 [build-dependencies]
 cc = "1.0"

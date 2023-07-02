@@ -61,10 +61,10 @@ extern crate libc;
 #[cfg(feature = "linux-native")]
 extern crate nix;
 
+//#[cfg(target_os = "windows")]
+//extern crate winapi;
 #[cfg(target_os = "windows")]
-extern crate winapi;
-#[cfg(target_os = "windows")]
-use winapi::shared::guiddef::GUID;
+use windows_sys::core::GUID;
 
 mod error;
 mod ffi;
