@@ -45,6 +45,7 @@
 //! - `illumos-static-libusb`: uses statically linked `libusb` backend on Illumos (default)
 //! - `illumos-shared-libusb`: uses statically linked `hidraw` backend on Illumos
 //! - `macos-shared-device`: enables shared access to HID devices on MacOS
+//! - `windows-native`: talks to hid.dll directly without using the `hidapi` C library
 //!
 //! ## Linux backends
 //!
@@ -82,6 +83,10 @@ mod macos;
 #[cfg_attr(docsrs, doc(cfg(target_os = "windows")))]
 mod windows;
 
+#[cfg(feature = "windows-native")]
+#[cfg_attr(docsrs, doc(cfg(feature = "windows-native")))]
+mod windows_native;
+
 use libc::wchar_t;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -95,6 +100,8 @@ pub use error::HidError;
 use crate::hidapi::HidApiBackend;
 #[cfg(feature = "linux-native")]
 use linux_native::HidApiBackend;
+#[cfg(feature = "windows-native")]
+use windows_native::HidApiBackend;
 
 pub type HidResult<T> = Result<T, HidError>;
 pub const MAX_REPORT_DESCRIPTOR_SIZE: usize = 4096;

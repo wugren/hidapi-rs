@@ -28,6 +28,7 @@ linux-native = ["dep:udev", "dep:nix"]
 illumos-static-libusb = []
 illumos-shared-libusb = []
 macos-shared-device = []
+windows-native = []
 
 [dependencies]
 libc = "0.2"

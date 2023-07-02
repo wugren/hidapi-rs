@@ -198,6 +198,8 @@ fn compile_windows() {
     }
     cc.compile("libhidapi.a");
     println!("cargo:rustc-link-lib=setupapi");
+
+    #[cfg(not(feature = "windows-native"))]
     println!("cargo:rustc-cfg=hidapi");
 }
 
