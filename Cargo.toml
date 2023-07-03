@@ -28,7 +28,16 @@ linux-native = ["dep:udev", "dep:nix"]
 illumos-static-libusb = []
 illumos-shared-libusb = []
 macos-shared-device = []
-windows-native = []
+windows-native = [
+    "bytemuck",
+    "windows-sys/Win32_Devices_DeviceAndDriverInstallation",
+    "windows-sys/Win32_Devices_HumanInterfaceDevice",
+    "windows-sys/Win32_Devices_Properties",
+    "windows-sys/Win32_Security",
+    "windows-sys/Win32_Storage_EnhancedStorage",
+    "windows-sys/Win32_Storage_FileSystem",
+    "windows-sys/Win32_UI_Shell_PropertiesSystem"
+]
 
 [dependencies]
 libc = "0.2"
@@ -38,8 +47,8 @@ udev = { version = "0.7", optional = true }
 nix = { version = "0.26", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.48", features = ["Win32_Devices_HumanInterfaceDevice", "Win32_Foundation"] }
-# winapi = "0.3.9"
+windows-sys = { version = "0.48", features = ["Win32_Foundation"] }
+bytemuck = { version = "1", optional = true }
 
 [build-dependencies]
 cc = "1.0"
