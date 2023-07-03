@@ -344,115 +344,17 @@ impl HidApiBackend {
 
     pub fn open(vid: u16, pid: u16) -> HidResult<HidDevice> {
         open(vid, pid, None)
-
-        //let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
-//
-        //if device.is_null() {
-        //    match Self::check_error() {
-        //        Ok(err) => Err(err),
-        //        Err(e) => Err(e),
-        //    }
-        //} else {
-        //    Ok(HidDevice::from_raw(device))
-        //}
     }
 
     pub fn open_serial(vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
         open(vid, pid, Some(sn))
-        //let mut chars = sn.chars().map(|c| c as wchar_t).collect::<Vec<_>>();
-        //chars.push(0 as wchar_t);
-        //let device = unsafe { ffi::hid_open(vid, pid, chars.as_ptr()) };
-        //if device.is_null() {
-        //    match Self::check_error() {
-        //        Ok(err) => Err(err),
-        //        Err(e) => Err(e),
-        //    }
-        //} else {
-        //    Ok(HidDevice::from_raw(device))
-        //}
     }
 
     pub fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         open_path(device_path)
-        //let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
-
-        //if device.is_null() {
-        //    match Self::check_error() {
-        //        Ok(err) => Err(err),
-        //        Err(e) => Err(e),
-        //    }
-        //} else {
-        //    Ok(HidDevice::from_raw(device))
-        //}
     }
 
-    /*
-    pub fn check_error() -> HidResult<HidError> {
-        Ok(HidError::HidApiError {
-            message: unsafe {
-                match wchar_to_string(ffi::hid_error(std::ptr::null_mut())) {
-                    WcharString::String(s) => s,
-                    _ => return Err(HidError::HidApiErrorEmpty),
-                }
-            },
-        })
-    }
-
-     */
 }
-
-/// Converts a pointer to a `*const wchar_t` to a WcharString.
-//unsafe fn wchar_to_string(wstr: *const wchar_t) -> WcharString {
-//    if wstr.is_null() {
-//        return WcharString::None;
-//    }
-//
-//    let mut char_vector: Vec<char> = Vec::with_capacity(8);
-//    let mut raw_vector: Vec<wchar_t> = Vec::with_capacity(8);
-//    let mut index: isize = 0;
-//    let mut invalid_char = false;
-//
-//    let o = |i| *wstr.offset(i);
-//
-//    while o(index) != 0 {
-//        use std::char;
-//
-//        raw_vector.push(*wstr.offset(index));
-//
-//        if !invalid_char {
-//            if let Some(c) = char::from_u32(o(index) as u32) {
-//                char_vector.push(c);
-//            } else {
-//                invalid_char = true;
-//            }
-//        }
-//
-//        index += 1;
-//    }
-//
-//    if !invalid_char {
-//        WcharString::String(char_vector.into_iter().collect())
-//    } else {
-//        WcharString::Raw(raw_vector)
-//    }
-//}
-
-/// Convert the CFFI `HidDeviceInfo` struct to a native `HidDeviceInfo` struct
-//pub unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidResult<DeviceInfo> {
-//    Ok(DeviceInfo {
-//        path: CStr::from_ptr((*src).path).to_owned(),
-//        vendor_id: (*src).vendor_id,
-//        product_id: (*src).product_id,
-//        serial_number: wchar_to_string((*src).serial_number),
-//        release_number: (*src).release_number,
-//        manufacturer_string: wchar_to_string((*src).manufacturer_string),
-//        product_string: wchar_to_string((*src).product_string),
-//        usage_page: (*src).usage_page,
-//        usage: (*src).usage,
-//        interface_number: (*src).interface_number,
-//        bus_type: (*src).bus_type,
-//    })
-//}
 
 /// Object for accessing HID device
 pub struct HidDevice {
@@ -477,40 +379,6 @@ impl Debug for HidDevice {
         f.debug_struct("HidDevice").finish()
     }
 }
-
-//impl Drop for HidDevice {
-//    fn drop(&mut self) {
-//        unsafe { ffi::hid_close(self._hid_device) }
-//    }
-//}
-
-//impl HidDevice {
-//    /// Check size returned by other methods, if it's equal to -1 check for
-//    /// error and return Error, otherwise return size as unsigned number
-//    fn check_size(&self, res: i32) -> HidResult<usize> {
-//        if res == -1 {
-//            match self.check_error() {
-//                Ok(err) => Err(err),
-//                Err(e) => Err(e),
-//            }
-//        } else {
-//            Ok(res as usize)
-//        }
-//    }
-//}
-
-//impl HidDevice {
-//    fn check_error(&self) -> HidResult<HidError> {
-//        Ok(HidError::HidApiError {
-//            message: unsafe {
-//                match wchar_to_string(ffi::hid_error(self._hid_device)) {
-//                    WcharString::String(s) => s,
-//                    _ => return Err(HidError::HidApiErrorEmpty),
-//                }
-//            },
-//        })
-//    }
-//}
 
 #[allow(dead_code, unused_variables)]
 impl HidDeviceBackendBase for HidDevice {
