@@ -22,6 +22,14 @@ use crate::{ffi, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharStr
 
 const STRING_BUF_LEN: usize = 128;
 
+macro_rules! ensure {
+    ($cond:expr, $result:expr) => {
+        if !($cond) {
+            return $result;
+        }
+    };
+}
+
 pub struct HidApiBackend;
 
 fn get_interface_list() -> Vec<u16> {
@@ -60,8 +68,8 @@ fn get_interface_list() -> Vec<u16> {
     device_interface_list
 }
 
-fn open_device(path: PCWSTR, open_rw: bool) -> HANDLE {
-    unsafe {
+fn open_device(path: PCWSTR, open_rw: bool) -> Option<HANDLE> {
+    let handle = unsafe {
         CreateFileW(
             path,
             match open_rw {
@@ -74,7 +82,9 @@ fn open_device(path: PCWSTR, open_rw: bool) -> HANDLE {
             FILE_FLAG_OVERLAPPED,
             0
         )
-    }
+    };
+    ensure!(handle != INVALID_HANDLE_VALUE, None);
+    Some(handle)
 }
 
 fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOOLEAN, handle: HANDLE) -> WcharString {
@@ -130,118 +140,14 @@ fn get_device_info(path: &[u16], handle: HANDLE) -> DeviceInfo {
     dev
 }
 
-fn get_device_interface_property(interface_path: PCWSTR, property_key: &DEVPROPKEY, expected_property_type: DEVPROPTYPE) -> Option<Vec<u8>> {
-    let mut property_type = 0;
-    let mut len = 0;
-    let cr = unsafe {
-        CM_Get_Device_Interface_PropertyW(
-            interface_path,
-            property_key,
-            &mut property_type,
-            null_mut(),
-            &mut len,
-            0
-        )
-    };
-    if cr != CR_BUFFER_SMALL || property_type != expected_property_type {
-        return None;
-    }
-    let mut property_value = vec![0u8; len as usize];
-    let cr = unsafe {
-        CM_Get_Device_Interface_PropertyW(
-            interface_path,
-            property_key,
-            &mut property_type,
-            property_value.as_mut_ptr(),
-            &mut len,
-            0
-        )
-    };
-    assert_eq!(property_value.len(), len as usize);
-    if cr != CR_SUCCESS {
-        return None;
-    }
-    Some(property_value)
-}
-
-fn get_devnode_property(dev_node: u32, property_key: *const DEVPROPKEY, expected_property_type: DEVPROPTYPE) -> Option<Vec<u8>> {
-    let mut property_type = 0;
-    let mut len = 0;
-    let cr = unsafe {
-        CM_Get_DevNode_PropertyW(
-            dev_node,
-            property_key,
-            &mut property_type,
-            null_mut(),
-            &mut len,
-            0
-        )
-    };
-    if cr != CR_BUFFER_SMALL || property_type != expected_property_type {
-        return None;
-    }
-    let mut property_value = vec![0u8; len as usize];
-    let cr = unsafe {
-        CM_Get_DevNode_PropertyW(
-            dev_node,
-            property_key,
-            &mut property_type,
-            property_value.as_mut_ptr(),
-            &mut len,
-            0
-        )
-    };
-    assert_eq!(property_value.len(), len as usize);
-    if cr != CR_SUCCESS {
-        return None;
-    }
-    Some(property_value)
-}
-
-fn to_upper(u16str: &mut [u16]) {
-    for c in u16str {
-        if let Ok(t) = u8::try_from(*c) {
-            *c = t.to_ascii_uppercase().into();
-        }
-    }
-}
-
-fn find_first_upper_case(u16str: &[u16], pattern: &str) -> Option<usize> {
-    u16str
-        .windows(pattern.encode_utf16().count())
-        .enumerate()
-        .filter(|(_, ss)| ss
-            .iter()
-            .copied()
-            .zip(pattern.encode_utf16())
-            .all(|(l, r)| l == r))
-        .map(|(i, _)| i)
-        .next()
-}
-
-fn starts_with_ignore_case(utf16str: &[u16], pattern: &str) -> bool {
-    //The hidapi c library uses `contains` instead of `starts_with`,
-    // but as far as I can tell `starts_with` is a better choice
-    char::decode_utf16(utf16str.iter().copied())
-        .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
-        .zip(pattern.chars())
-        .all(|(l, r)| l.eq_ignore_ascii_case(&r))
-}
-
 fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()> {
     let device_id = get_device_interface_property(interface_path, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
 
     let dev_node = unsafe {
         let mut node = 0;
         let cr = CM_Locate_DevNodeW(&mut node, device_id.as_ptr() as _, CM_LOCATE_DEVNODE_NORMAL);
-        if cr != CR_SUCCESS {
-            return None;
-        }
-        let cr = CM_Get_Parent(&mut node, node, 0);
-        if cr != CR_SUCCESS {
-            return None;
-        }
-        node
+        ensure!(cr == CR_SUCCESS, None);
+        get_dev_node_parent(node)?
     };
 
     let compatible_ids = get_devnode_property(dev_node, &DEVPKEY_Device_CompatibleIds, DEVPROP_TYPE_STRING_LIST)?;
@@ -268,7 +174,6 @@ fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()>
         .next()
         .unwrap_or(InternalBuyType::Unknown);
     dev.bus_type = bus_type.into();
-    //println!("{:?}", extract_int_token_value(&"VID_045E&PID_028E&IG_1A&".encode_utf16().collect::<Vec<_>>(), "IG_"));
     match bus_type {
         InternalBuyType::Usb => get_usb_info(dev, dev_node),
         InternalBuyType::BluetoothLE => get_ble_info(dev, dev_node),
@@ -276,15 +181,6 @@ fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()>
     };
 
     Some(())
-}
-
-fn extract_int_token_value(u16str: &[u16], token: &str) -> Option<u32> {
-    let start = find_first_upper_case(u16str, token)? + token.encode_utf16().count();
-    char::decode_utf16(u16str[start..].iter().copied())
-        .map_while(|c| c
-            .ok()
-            .and_then(|c| c.to_digit(16)))
-        .reduce(|l, r| l * 16 + r)
 }
 
 fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
@@ -296,9 +192,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
 	   https://docs.microsoft.com/windows/win32/xinput/xinput-and-directinput
 	*/
     if extract_int_token_value(bytemuck::cast_slice(&device_id), "IG_").is_some() {
-        if unsafe { CM_Get_Parent(&mut dev_node, dev_node, 0) } != CR_SUCCESS {
-            return None;
-        }
+        dev_node = get_dev_node_parent(dev_node)?;
     }
 
     let mut hardware_ids = get_devnode_property(dev_node, &DEVPKEY_Device_HardwareIds, DEVPROP_TYPE_STRING_LIST)?;
@@ -335,9 +229,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
             /* Get devnode parent to reach out composite parent USB device.
                https://docs.microsoft.com/windows-hardware/drivers/usbcon/enumeration-of-the-composite-parent-device
             */
-            if unsafe { CM_Get_Parent(&mut usb_dev_node, dev_node, 0) } != CR_SUCCESS {
-                return None;
-            }
+            usb_dev_node = get_dev_node_parent(dev_node)?;
         }
 
         let device_id = get_devnode_property(usb_dev_node, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
@@ -392,13 +284,9 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
             (&PKEY_DeviceInterface_Bluetooth_ModelNumber as *const PROPERTYKEY) as _,
             DEVPROP_TYPE_STRING
         ).or_else(|| {
-            let mut parent_dev_node = 0;
             /* Fallback: Get devnode grandparent to reach out Bluetooth LE device node */
-            if unsafe { CM_Get_Parent(&mut parent_dev_node, dev_node, 0) } == CR_SUCCESS {
-                get_devnode_property(parent_dev_node, &DEVPKEY_NAME, DEVPROP_TYPE_STRING)
-            } else {
-                None
-            }
+            get_dev_node_parent(dev_node)
+                .and_then(|parent_dev_node| get_devnode_property(parent_dev_node, &DEVPKEY_NAME, DEVPROP_TYPE_STRING))
         });
         if let Some(product_string) = product_string {
             dev.product_string = WcharString::String(String::from_utf16_lossy(bytemuck::cast_slice(&product_string)));
@@ -413,43 +301,16 @@ impl HidApiBackend {
         let mut device_vector = Vec::with_capacity(8);
 
         for device_interface in get_interface_list().split(|c| *c == 0) {
-            println!("{}", String::from_utf16_lossy(device_interface));
+            //println!("{}", String::from_utf16_lossy(device_interface));
 
-            let device_handle = open_device(device_interface.as_ptr(), false);
-            if device_handle == INVALID_HANDLE_VALUE {
-                continue;
+            if let Some(device_handle) = open_device(device_interface.as_ptr(), false) {
+                device_vector.push(get_device_info(device_interface, device_handle));
+
+                unsafe { CloseHandle(device_handle); }
             }
 
-            device_vector.push(get_device_info(device_interface, device_handle));
-
-
-            //let mut attrib = HIDD_ATTRIBUTES {
-            //    Size: size_of::<HIDD_ATTRIBUTES>() as u32,
-            //    ..unsafe { zeroed() }
-            //};
-            //if unsafe { HidD_GetAttributes(device_handle, &mut attrib) } == 0 {
-            //    unsafe { CloseHandle(device_handle); }
-            //} else {
-            //    println!("{} {}", attrib.ProductID, attrib.VendorID);
-            //}
-
-            unsafe { CloseHandle(device_handle); }
-        }
-        /*
-        let enumeration = hid_enumerate(0, 0);
-        {
-            let mut current_device = enumeration;
-
-            while !current_device.is_null() {
-                device_vector.push(unsafe { conv_hid_device_info(current_device)? });
-                current_device = unsafe { (*current_device).next };
-            }
         }
 
-        if !enumeration.is_null() {
-            unsafe { ffi::hid_free_enumeration(enumeration) };
-        }
-        */
         Ok(device_vector)
     }
 
@@ -789,5 +650,115 @@ impl From<InternalBuyType> for BusType {
             InternalBuyType::I2c => BusType::I2c,
             InternalBuyType::Spi => BusType::Spi
         }
+    }
+}
+
+
+fn to_upper(u16str: &mut [u16]) {
+    for c in u16str {
+        if let Ok(t) = u8::try_from(*c) {
+            *c = t.to_ascii_uppercase().into();
+        }
+    }
+}
+
+fn find_first_upper_case(u16str: &[u16], pattern: &str) -> Option<usize> {
+    u16str
+        .windows(pattern.encode_utf16().count())
+        .enumerate()
+        .filter(|(_, ss)| ss
+            .iter()
+            .copied()
+            .zip(pattern.encode_utf16())
+            .all(|(l, r)| l == r))
+        .map(|(i, _)| i)
+        .next()
+}
+
+fn starts_with_ignore_case(utf16str: &[u16], pattern: &str) -> bool {
+    //The hidapi c library uses `contains` instead of `starts_with`,
+    // but as far as I can tell `starts_with` is a better choice
+    char::decode_utf16(utf16str.iter().copied())
+        .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
+        .zip(pattern.chars())
+        .all(|(l, r)| l.eq_ignore_ascii_case(&r))
+}
+
+fn extract_int_token_value(u16str: &[u16], token: &str) -> Option<u32> {
+    let start = find_first_upper_case(u16str, token)? + token.encode_utf16().count();
+    char::decode_utf16(u16str[start..].iter().copied())
+        .map_while(|c| c
+            .ok()
+            .and_then(|c| c.to_digit(16)))
+        .reduce(|l, r| l * 16 + r)
+}
+
+
+
+fn get_device_interface_property(interface_path: PCWSTR, property_key: &DEVPROPKEY, expected_property_type: DEVPROPTYPE) -> Option<Vec<u8>> {
+    let mut property_type = 0;
+    let mut len = 0;
+    let cr = unsafe {
+        CM_Get_Device_Interface_PropertyW(
+            interface_path,
+            property_key,
+            &mut property_type,
+            null_mut(),
+            &mut len,
+            0
+        )
+    };
+    ensure!(cr == CR_BUFFER_SMALL && property_type == expected_property_type, None);
+    let mut property_value = vec![0u8; len as usize];
+    let cr = unsafe {
+        CM_Get_Device_Interface_PropertyW(
+            interface_path,
+            property_key,
+            &mut property_type,
+            property_value.as_mut_ptr(),
+            &mut len,
+            0
+        )
+    };
+    assert_eq!(property_value.len(), len as usize);
+    ensure!(cr == CR_SUCCESS, None);
+    Some(property_value)
+}
+
+fn get_devnode_property(dev_node: u32, property_key: *const DEVPROPKEY, expected_property_type: DEVPROPTYPE) -> Option<Vec<u8>> {
+    let mut property_type = 0;
+    let mut len = 0;
+    let cr = unsafe {
+        CM_Get_DevNode_PropertyW(
+            dev_node,
+            property_key,
+            &mut property_type,
+            null_mut(),
+            &mut len,
+            0
+        )
+    };
+    ensure!(cr == CR_BUFFER_SMALL && property_type == expected_property_type, None);
+    let mut property_value = vec![0u8; len as usize];
+    let cr = unsafe {
+        CM_Get_DevNode_PropertyW(
+            dev_node,
+            property_key,
+            &mut property_type,
+            property_value.as_mut_ptr(),
+            &mut len,
+            0
+        )
+    };
+    assert_eq!(property_value.len(), len as usize);
+    ensure!(cr == CR_SUCCESS, None);
+    Some(property_value)
+}
+
+fn get_dev_node_parent(dev_node: u32) -> Option<u32> {
+    let mut parent = 0;
+    match unsafe { CM_Get_Parent(&mut parent, dev_node, 0)} {
+        CR_SUCCESS => Some(parent),
+        _ => None
     }
 }
