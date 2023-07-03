@@ -30,7 +30,6 @@ macro_rules! ensure {
     };
 }
 
-pub struct HidApiBackend;
 
 fn get_interface_list() -> Vec<u16> {
     let interface_class_guid = unsafe {
@@ -91,11 +90,11 @@ fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOO
     //Return empty string on failure to match the c implementation
     let mut string = [0u16; 256];
     if unsafe { func(handle, string.as_mut_ptr() as _, (size_of::<u16>() * string.len()) as u32) } != 0 {
-        WcharString::String(string
+        string
             .split(|c| *c == 0)
-            .map(String::from_utf16_lossy)
+            .map(u16str_to_wstring)
             .next()
-            .unwrap_or_else(String::new))
+            .unwrap_or_else(|| WcharString::String(String::new()))
     } else {
         //WcharString::None
         WcharString::String(String::new())
@@ -123,7 +122,7 @@ fn get_device_info(path: &[u16], handle: HANDLE) -> DeviceInfo {
 
 
     let mut dev = DeviceInfo {
-        path: CString::new(String::from_utf16_lossy(path)).unwrap(),
+        path: CString::new(String::from_utf16(path).unwrap()).unwrap(),
         vendor_id: attrib.VendorID,
         product_id: attrib.ProductID,
         serial_number: read_string(HidD_GetSerialNumberString, handle),
@@ -218,7 +217,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
     /* Try to get USB device manufacturer string if not provided by HidD_GetManufacturerString. */
     if dev.manufacturer_string().map_or(true, str::is_empty) {
         if let Some(manufacturer_string) = get_devnode_property(dev_node, &DEVPKEY_Device_Manufacturer, DEVPROP_TYPE_STRING) {
-            dev.manufacturer_string = WcharString::String(String::from_utf16_lossy(bytemuck::cast_slice(&manufacturer_string)));
+            dev.manufacturer_string = u16str_to_wstring(bytemuck::cast_slice(&manufacturer_string));
         }
     }
 
@@ -243,7 +242,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
             .rsplit(|c| *c != b'&' as u16)
             .next()
             .and_then(|s| s.iter().rposition(|c| *c != b'\\' as u16)) {
-            dev.serial_number = WcharString::String(String::from_utf16_lossy(&device_id[(start + 1)..]));
+            dev.serial_number = u16str_to_wstring(&device_id[(start + 1)..]);
         }
 
     }
@@ -265,7 +264,7 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
             dev_node,
             (&PKEY_DeviceInterface_Bluetooth_Manufacturer as *const PROPERTYKEY) as _,
             DEVPROP_TYPE_STRING) {
-            dev.manufacturer_string = WcharString::String(String::from_utf16_lossy(bytemuck::cast_slice(&manufacturer_string)));
+            dev.manufacturer_string = u16str_to_wstring(bytemuck::cast_slice(&manufacturer_string));
         }
     }
 
@@ -274,7 +273,7 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
             dev_node,
             (&PKEY_DeviceInterface_Bluetooth_DeviceAddress as *const PROPERTYKEY) as _,
             DEVPROP_TYPE_STRING) {
-            dev.serial_number = WcharString::String(String::from_utf16_lossy(bytemuck::cast_slice(&serial_number)));
+            dev.serial_number = u16str_to_wstring(bytemuck::cast_slice(&serial_number));
         }
     }
 
@@ -289,13 +288,14 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
                 .and_then(|parent_dev_node| get_devnode_property(parent_dev_node, &DEVPKEY_NAME, DEVPROP_TYPE_STRING))
         });
         if let Some(product_string) = product_string {
-            dev.product_string = WcharString::String(String::from_utf16_lossy(bytemuck::cast_slice(&product_string)));
+            dev.product_string = u16str_to_wstring(bytemuck::cast_slice(&product_string));
         }
     }
 
     Some(())
 }
 
+pub struct HidApiBackend;
 impl HidApiBackend {
     pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
         let mut device_vector = Vec::with_capacity(8);
@@ -693,6 +693,11 @@ fn extract_int_token_value(u16str: &[u16], token: &str) -> Option<u32> {
         .reduce(|l, r| l * 16 + r)
 }
 
+fn u16str_to_wstring(u16str: &[u16]) -> WcharString {
+    String::from_utf16(u16str)
+        .map(WcharString::String)
+        .unwrap_or_else(|_| WcharString::Raw(u16str.to_vec()))
+}
 
 
 fn get_device_interface_property(interface_path: PCWSTR, property_key: &DEVPROPKEY, expected_property_type: DEVPROPTYPE) -> Option<Vec<u8>> {
