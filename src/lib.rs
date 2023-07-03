@@ -265,10 +265,10 @@ impl HidApi {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, PartialEq)]
 enum WcharString {
     String(String),
-    #[cfg_attr(feature = "linux-native", allow(dead_code))]
     Raw(Vec<wchar_t>),
     None,
 }

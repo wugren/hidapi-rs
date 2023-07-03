@@ -5,22 +5,25 @@ use std::{
     fmt::{self, Debug},
 };
 use std::ffi::{c_void, CString};
+use std::iter::once;
 use std::mem::{size_of, zeroed};
-use std::ptr::{addr_of_mut, null, null_mut};
+use std::ptr::{null, null_mut};
 
-use libc::{c_int, size_t, wchar_t};
 use windows_sys::core::{GUID, PCWSTR};
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
-use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetManufacturerString, HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidP_GetCaps};
+use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetManufacturerString, HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidD_SetNumInputBuffers, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPKEY, DEVPROPTYPE};
-use windows_sys::Win32::Foundation::{BOOLEAN, CloseHandle, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{BOOLEAN, CloseHandle, FALSE, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
+use windows_sys::Win32::System::IO::OVERLAPPED;
+use windows_sys::Win32::System::Threading::CreateEventW;
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
+use crate::{BusType, DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult, WcharString};
 
-use crate::{ffi, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString, HidDeviceBackendWindows, BusType};
+//use crate::{ffi, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString, HidDeviceBackendWindows, BusType};
 
-const STRING_BUF_LEN: usize = 128;
+//const STRING_BUF_LEN: usize = 128;
 
 macro_rules! ensure {
     ($cond:expr, $result:expr) => {
@@ -67,7 +70,19 @@ fn get_interface_list() -> Vec<u16> {
     device_interface_list
 }
 
-fn open_device(path: PCWSTR, open_rw: bool) -> Option<HANDLE> {
+fn enumerate_devices(vendor_id: u16, product_id: u16) -> Vec<DeviceInfo> {
+    get_interface_list()
+        .split(|c| *c == 0)
+        .filter_map(|device_interface| {
+            let device_handle = open_device(device_interface.as_ptr(), false).ok()?;
+            let attrib = get_hid_attributes(device_handle.as_raw());
+            ((vendor_id == 0 || attrib.VendorID == vendor_id) && (product_id == 0 || attrib.ProductID == product_id))
+                .then(|| get_device_info(device_interface, device_handle.as_raw()))
+        })
+        .collect()
+}
+
+fn open_device(path: PCWSTR, open_rw: bool) -> HidResult<Handle> {
     let handle = unsafe {
         CreateFileW(
             path,
@@ -82,8 +97,8 @@ fn open_device(path: PCWSTR, open_rw: bool) -> Option<HANDLE> {
             0
         )
     };
-    ensure!(handle != INVALID_HANDLE_VALUE, None);
-    Some(handle)
+    ensure!(handle != INVALID_HANDLE_VALUE, Err(HidError::IoError{ error: std::io::Error::last_os_error() }));
+    Ok(Handle(handle))
 }
 
 fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOOLEAN, handle: HANDLE) -> WcharString {
@@ -102,24 +117,9 @@ fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOO
 }
 
 fn get_device_info(path: &[u16], handle: HANDLE) -> DeviceInfo {
-    let attrib = unsafe {
-        let mut attrib = HIDD_ATTRIBUTES {
-            Size: size_of::<HIDD_ATTRIBUTES>() as u32,
-            ..zeroed()
-        };
-        HidD_GetAttributes(handle, &mut attrib);
-        attrib
-    };
-    let caps = unsafe {
-        let mut caps = zeroed();
-        let mut pp_data = 0;
-        if HidD_GetPreparsedData(handle, &mut pp_data) != 0 {
-            HidP_GetCaps(pp_data, &mut caps);
-            HidD_FreePreparsedData(pp_data);
-        }
-        caps
-    };
-
+    let attrib = get_hid_attributes(handle);
+    let caps = get_hid_caps(handle)
+        .unwrap_or(unsafe { zeroed() });
 
     let mut dev = DeviceInfo {
         path: CString::new(String::from_utf16(path).unwrap()).unwrap(),
@@ -295,65 +295,98 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
     Some(())
 }
 
+fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<HidDevice> {
+    let dev = enumerate_devices(vid, pid)
+        .into_iter()
+        .filter(|dev| dev.vendor_id == vid && dev.product_id == pid)
+        .filter(|dev| sn.map_or(true, |sn| dev.serial_number().is_some_and(|n| sn == n)))
+        .next()
+        .ok_or(HidError::HidApiErrorEmpty)?;
+    open_path(dev.path())
+}
+
+fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
+    let device_path = device_path
+        .to_str()
+        .map(|s| s
+            .encode_utf16()
+            .chain(once(0))
+            .collect::<Vec<_>>())
+        .unwrap();
+    let handle = open_device(device_path.as_ptr(), true)?;
+    assert_ne!(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) }, 0);
+    assert_ne!(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) }, 0);
+    let caps = get_hid_caps(handle.as_raw()).unwrap();
+    let device_info = get_device_info(&device_path, handle.as_raw());
+    let dev = HidDevice {
+        device_handle: handle,
+        blocking: true,
+        output_report_length: caps.OutputReportByteLength,
+        write_buf: null_mut(),
+        input_report_length: caps.InputReportByteLength as usize,
+        feature_report_length: caps.FeatureReportByteLength,
+        feature_buf: null_mut(),
+        read_pending: false,
+        read_buf: null_mut(),
+        ol: Overlapped::default(),
+        write_ol: Overlapped::default(),
+        device_info,
+    };
+
+    Ok(dev)
+}
+
 pub struct HidApiBackend;
 impl HidApiBackend {
     pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
-        let mut device_vector = Vec::with_capacity(8);
-
-        for device_interface in get_interface_list().split(|c| *c == 0) {
-            //println!("{}", String::from_utf16_lossy(device_interface));
-
-            if let Some(device_handle) = open_device(device_interface.as_ptr(), false) {
-                device_vector.push(get_device_info(device_interface, device_handle));
-
-                unsafe { CloseHandle(device_handle); }
-            }
-
-        }
-
-        Ok(device_vector)
+        Ok(enumerate_devices(0, 0))
     }
 
     pub fn open(vid: u16, pid: u16) -> HidResult<HidDevice> {
-        let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
+        open(vid, pid, None)
 
-        if device.is_null() {
-            match Self::check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice::from_raw(device))
-        }
+        //let device = unsafe { ffi::hid_open(vid, pid, std::ptr::null()) };
+//
+        //if device.is_null() {
+        //    match Self::check_error() {
+        //        Ok(err) => Err(err),
+        //        Err(e) => Err(e),
+        //    }
+        //} else {
+        //    Ok(HidDevice::from_raw(device))
+        //}
     }
 
     pub fn open_serial(vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
-        let mut chars = sn.chars().map(|c| c as wchar_t).collect::<Vec<_>>();
-        chars.push(0 as wchar_t);
-        let device = unsafe { ffi::hid_open(vid, pid, chars.as_ptr()) };
-        if device.is_null() {
-            match Self::check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice::from_raw(device))
-        }
+        open(vid, pid, Some(sn))
+        //let mut chars = sn.chars().map(|c| c as wchar_t).collect::<Vec<_>>();
+        //chars.push(0 as wchar_t);
+        //let device = unsafe { ffi::hid_open(vid, pid, chars.as_ptr()) };
+        //if device.is_null() {
+        //    match Self::check_error() {
+        //        Ok(err) => Err(err),
+        //        Err(e) => Err(e),
+        //    }
+        //} else {
+        //    Ok(HidDevice::from_raw(device))
+        //}
     }
 
     pub fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
-        let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
+        open_path(device_path)
+        //let device = unsafe { ffi::hid_open_path(device_path.as_ptr()) };
 
-        if device.is_null() {
-            match Self::check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(HidDevice::from_raw(device))
-        }
+        //if device.is_null() {
+        //    match Self::check_error() {
+        //        Ok(err) => Err(err),
+        //        Err(e) => Err(e),
+        //    }
+        //} else {
+        //    Ok(HidDevice::from_raw(device))
+        //}
     }
 
+    /*
     pub fn check_error() -> HidResult<HidError> {
         Ok(HidError::HidApiError {
             message: unsafe {
@@ -364,72 +397,77 @@ impl HidApiBackend {
             },
         })
     }
+
+     */
 }
 
 /// Converts a pointer to a `*const wchar_t` to a WcharString.
-unsafe fn wchar_to_string(wstr: *const wchar_t) -> WcharString {
-    if wstr.is_null() {
-        return WcharString::None;
-    }
-
-    let mut char_vector: Vec<char> = Vec::with_capacity(8);
-    let mut raw_vector: Vec<wchar_t> = Vec::with_capacity(8);
-    let mut index: isize = 0;
-    let mut invalid_char = false;
-
-    let o = |i| *wstr.offset(i);
-
-    while o(index) != 0 {
-        use std::char;
-
-        raw_vector.push(*wstr.offset(index));
-
-        if !invalid_char {
-            if let Some(c) = char::from_u32(o(index) as u32) {
-                char_vector.push(c);
-            } else {
-                invalid_char = true;
-            }
-        }
-
-        index += 1;
-    }
-
-    if !invalid_char {
-        WcharString::String(char_vector.into_iter().collect())
-    } else {
-        WcharString::Raw(raw_vector)
-    }
-}
+//unsafe fn wchar_to_string(wstr: *const wchar_t) -> WcharString {
+//    if wstr.is_null() {
+//        return WcharString::None;
+//    }
+//
+//    let mut char_vector: Vec<char> = Vec::with_capacity(8);
+//    let mut raw_vector: Vec<wchar_t> = Vec::with_capacity(8);
+//    let mut index: isize = 0;
+//    let mut invalid_char = false;
+//
+//    let o = |i| *wstr.offset(i);
+//
+//    while o(index) != 0 {
+//        use std::char;
+//
+//        raw_vector.push(*wstr.offset(index));
+//
+//        if !invalid_char {
+//            if let Some(c) = char::from_u32(o(index) as u32) {
+//                char_vector.push(c);
+//            } else {
+//                invalid_char = true;
+//            }
+//        }
+//
+//        index += 1;
+//    }
+//
+//    if !invalid_char {
+//        WcharString::String(char_vector.into_iter().collect())
+//    } else {
+//        WcharString::Raw(raw_vector)
+//    }
+//}
 
 /// Convert the CFFI `HidDeviceInfo` struct to a native `HidDeviceInfo` struct
-pub unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidResult<DeviceInfo> {
-    Ok(DeviceInfo {
-        path: CStr::from_ptr((*src).path).to_owned(),
-        vendor_id: (*src).vendor_id,
-        product_id: (*src).product_id,
-        serial_number: wchar_to_string((*src).serial_number),
-        release_number: (*src).release_number,
-        manufacturer_string: wchar_to_string((*src).manufacturer_string),
-        product_string: wchar_to_string((*src).product_string),
-        usage_page: (*src).usage_page,
-        usage: (*src).usage,
-        interface_number: (*src).interface_number,
-        bus_type: (*src).bus_type,
-    })
-}
+//pub unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidResult<DeviceInfo> {
+//    Ok(DeviceInfo {
+//        path: CStr::from_ptr((*src).path).to_owned(),
+//        vendor_id: (*src).vendor_id,
+//        product_id: (*src).product_id,
+//        serial_number: wchar_to_string((*src).serial_number),
+//        release_number: (*src).release_number,
+//        manufacturer_string: wchar_to_string((*src).manufacturer_string),
+//        product_string: wchar_to_string((*src).product_string),
+//        usage_page: (*src).usage_page,
+//        usage: (*src).usage,
+//        interface_number: (*src).interface_number,
+//        bus_type: (*src).bus_type,
+//    })
+//}
 
 /// Object for accessing HID device
 pub struct HidDevice {
-    _hid_device: *mut ffi::HidDevice,
-}
-
-impl HidDevice {
-    pub fn from_raw(device: *mut ffi::HidDevice) -> Self {
-        Self {
-            _hid_device: device,
-        }
-    }
+    device_handle: Handle,
+    blocking: bool,
+    output_report_length: u16,
+    write_buf: *mut u8,
+    input_report_length: usize,
+    feature_report_length: u16,
+    feature_buf: *mut u8,
+    read_pending: bool,
+    read_buf: *mut u8,
+    ol: Overlapped,
+    write_ol: Overlapped,
+    device_info: DeviceInfo
 }
 
 unsafe impl Send for HidDevice {}
@@ -440,192 +478,210 @@ impl Debug for HidDevice {
     }
 }
 
-impl Drop for HidDevice {
-    fn drop(&mut self) {
-        unsafe { ffi::hid_close(self._hid_device) }
-    }
-}
+//impl Drop for HidDevice {
+//    fn drop(&mut self) {
+//        unsafe { ffi::hid_close(self._hid_device) }
+//    }
+//}
 
-impl HidDevice {
-    /// Check size returned by other methods, if it's equal to -1 check for
-    /// error and return Error, otherwise return size as unsigned number
-    fn check_size(&self, res: i32) -> HidResult<usize> {
-        if res == -1 {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(res as usize)
-        }
-    }
-}
+//impl HidDevice {
+//    /// Check size returned by other methods, if it's equal to -1 check for
+//    /// error and return Error, otherwise return size as unsigned number
+//    fn check_size(&self, res: i32) -> HidResult<usize> {
+//        if res == -1 {
+//            match self.check_error() {
+//                Ok(err) => Err(err),
+//                Err(e) => Err(e),
+//            }
+//        } else {
+//            Ok(res as usize)
+//        }
+//    }
+//}
 
-impl HidDevice {
-    fn check_error(&self) -> HidResult<HidError> {
-        Ok(HidError::HidApiError {
-            message: unsafe {
-                match wchar_to_string(ffi::hid_error(self._hid_device)) {
-                    WcharString::String(s) => s,
-                    _ => return Err(HidError::HidApiErrorEmpty),
-                }
-            },
-        })
-    }
-}
+//impl HidDevice {
+//    fn check_error(&self) -> HidResult<HidError> {
+//        Ok(HidError::HidApiError {
+//            message: unsafe {
+//                match wchar_to_string(ffi::hid_error(self._hid_device)) {
+//                    WcharString::String(s) => s,
+//                    _ => return Err(HidError::HidApiErrorEmpty),
+//                }
+//            },
+//        })
+//    }
+//}
 
+#[allow(dead_code, unused_variables)]
 impl HidDeviceBackendBase for HidDevice {
 
     fn write(&self, data: &[u8]) -> HidResult<usize> {
-        if data.is_empty() {
-            return Err(HidError::InvalidZeroSizeData);
-        }
-        let res = unsafe { ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t) };
-        self.check_size(res)
+        //if data.is_empty() {
+        //    return Err(HidError::InvalidZeroSizeData);
+        //}
+        //let res = unsafe { ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t) };
+        //self.check_size(res)
+        todo!()
     }
 
     fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let res = unsafe { ffi::hid_read(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t) };
-        self.check_size(res)
+        //let res = unsafe { ffi::hid_read(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t) };
+        //self.check_size(res)
+        todo!()
     }
 
     fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        let res = unsafe {
-            ffi::hid_read_timeout(
-                self._hid_device,
-                buf.as_mut_ptr(),
-                buf.len() as size_t,
-                timeout,
-            )
-        };
-        self.check_size(res)
+        //let res = unsafe {
+        //    ffi::hid_read_timeout(
+        //        self._hid_device,
+        //        buf.as_mut_ptr(),
+        //        buf.len() as size_t,
+        //        timeout,
+        //    )
+        //};
+        //self.check_size(res)
+        todo!()
     }
 
     fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
-        if data.is_empty() {
-            return Err(HidError::InvalidZeroSizeData);
-        }
-        let res = unsafe {
-            ffi::hid_send_feature_report(self._hid_device, data.as_ptr(), data.len() as size_t)
-        };
-        let res = self.check_size(res)?;
-        if res != data.len() {
-            Err(HidError::IncompleteSendError {
-                sent: res,
-                all: data.len(),
-            })
-        } else {
-            Ok(())
-        }
+        //if data.is_empty() {
+        //    return Err(HidError::InvalidZeroSizeData);
+        //}
+        //let res = unsafe {
+        //    ffi::hid_send_feature_report(self._hid_device, data.as_ptr(), data.len() as size_t)
+        //};
+        //let res = self.check_size(res)?;
+        //if res != data.len() {
+        //    Err(HidError::IncompleteSendError {
+        //        sent: res,
+        //        all: data.len(),
+        //    })
+        //} else {
+        //    Ok(())
+        //}
+        todo!()
     }
 
     /// Set the first byte of `buf` to the 'Report ID' of the report to be read.
     /// Upon return, the first byte will still contain the Report ID, and the
     /// report data will start in `buf[1]`.
     fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let res = unsafe {
-            ffi::hid_get_feature_report(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t)
-        };
-        self.check_size(res)
+        //let res = unsafe {
+        //    ffi::hid_get_feature_report(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t)
+        //};
+        //self.check_size(res)
+        todo!()
     }
 
     fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
-        let res = unsafe {
-            ffi::hid_set_nonblocking(self._hid_device, if blocking { 0i32 } else { 1i32 })
-        };
-        if res == -1 {
-            Err(HidError::SetBlockingModeError {
-                mode: match blocking {
-                    true => "blocking",
-                    false => "not blocking",
-                },
-            })
-        } else {
-            Ok(())
-        }
+        //let res = unsafe {
+        //    ffi::hid_set_nonblocking(self._hid_device, if blocking { 0i32 } else { 1i32 })
+        //};
+        //if res == -1 {
+        //    Err(HidError::SetBlockingModeError {
+        //        mode: match blocking {
+        //            true => "blocking",
+        //            false => "not blocking",
+        //        },
+        //    })
+        //} else {
+        //    Ok(())
+        //}
+        todo!()
     }
 
     fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
-        let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {
-            ffi::hid_get_manufacturer_string(
-                self._hid_device,
-                buf.as_mut_ptr(),
-                STRING_BUF_LEN as size_t,
-            )
-        };
-        let res = self.check_size(res)?;
-        unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        //let mut buf = [0 as wchar_t; STRING_BUF_LEN];
+        //let res = unsafe {
+        //    ffi::hid_get_manufacturer_string(
+        //        self._hid_device,
+        //        buf.as_mut_ptr(),
+        //        STRING_BUF_LEN as size_t,
+        //    )
+        //};
+        //let res = self.check_size(res)?;
+        //unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        todo!()
     }
 
     fn get_product_string(&self) -> HidResult<Option<String>> {
-        let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {
-            ffi::hid_get_product_string(
-                self._hid_device,
-                buf.as_mut_ptr(),
-                STRING_BUF_LEN as size_t,
-            )
-        };
-        let res = self.check_size(res)?;
-        unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        //let mut buf = [0 as wchar_t; STRING_BUF_LEN];
+        //let res = unsafe {
+        //    ffi::hid_get_product_string(
+        //        self._hid_device,
+        //        buf.as_mut_ptr(),
+        //        STRING_BUF_LEN as size_t,
+        //    )
+        //};
+        //let res = self.check_size(res)?;
+        //unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+
+        todo!()
     }
 
     fn get_serial_number_string(&self) -> HidResult<Option<String>> {
-        let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {
-            ffi::hid_get_serial_number_string(
-                self._hid_device,
-                buf.as_mut_ptr(),
-                STRING_BUF_LEN as size_t,
-            )
-        };
-        let res = self.check_size(res)?;
-        unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        //let mut buf = [0 as wchar_t; STRING_BUF_LEN];
+        //let res = unsafe {
+        //    ffi::hid_get_serial_number_string(
+        //        self._hid_device,
+        //        buf.as_mut_ptr(),
+        //        STRING_BUF_LEN as size_t,
+        //    )
+        //};
+        //let res = self.check_size(res)?;
+        //unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+
+        todo!()
     }
 
     fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
-        let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        let res = unsafe {
-            ffi::hid_get_indexed_string(
-                self._hid_device,
-                index as c_int,
-                buf.as_mut_ptr(),
-                STRING_BUF_LEN,
-            )
-        };
-        let res = self.check_size(res)?;
-        unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+        //let mut buf = [0 as wchar_t; STRING_BUF_LEN];
+        //let res = unsafe {
+        //    ffi::hid_get_indexed_string(
+        //        self._hid_device,
+        //        index as c_int,
+        //        buf.as_mut_ptr(),
+        //        STRING_BUF_LEN,
+        //    )
+        //};
+        //let res = self.check_size(res)?;
+        //unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
+
+        todo!()
     }
 
     fn get_device_info(&self) -> HidResult<DeviceInfo> {
-        let raw_device = unsafe { ffi::hid_get_device_info(self._hid_device) };
-        if raw_device.is_null() {
-            match self.check_error() {
-                Ok(err) | Err(err) => return Err(err),
-            }
-        }
+        //let raw_device = unsafe { ffi::hid_get_device_info(self._hid_device) };
+        //if raw_device.is_null() {
+        //    match self.check_error() {
+        //        Ok(err) | Err(err) => return Err(err),
+        //    }
+        //}
+//
+        //unsafe { conv_hid_device_info(raw_device) }
 
-        unsafe { conv_hid_device_info(raw_device) }
+        todo!()
     }
 }
 
 impl HidDeviceBackendWindows for HidDevice {
     fn get_container_id(&self) -> HidResult<GUID> {
-        let mut container_id: GUID = unsafe { std::mem::zeroed() };
+        //let mut container_id: GUID = unsafe { std::mem::zeroed() };
+//
+        //let res = unsafe {
+        //    ffi::windows::hid_winapi_get_container_id(self._hid_device, addr_of_mut!(container_id))
+        //};
+//
+        //if res == -1 {
+        //    match self.check_error() {
+        //        Ok(err) => Err(err),
+        //        Err(err) => Err(err),
+        //    }
+        //} else {
+        //    Ok(container_id)
+        //}
 
-        let res = unsafe {
-            ffi::windows::hid_winapi_get_container_id(self._hid_device, addr_of_mut!(container_id))
-        };
-
-        if res == -1 {
-            match self.check_error() {
-                Ok(err) => Err(err),
-                Err(err) => Err(err),
-            }
-        } else {
-            Ok(container_id)
-        }
+        todo!()
     }
 }
 
@@ -650,6 +706,56 @@ impl From<InternalBuyType> for BusType {
             InternalBuyType::I2c => BusType::I2c,
             InternalBuyType::Spi => BusType::Spi
         }
+    }
+}
+
+struct Handle(HANDLE);
+
+impl Handle {
+    fn as_raw(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Drop for Handle {
+    fn drop(&mut self) {
+        if self.0 != INVALID_HANDLE_VALUE {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+        self.0 = INVALID_HANDLE_VALUE;
+    }
+}
+
+
+struct Overlapped(OVERLAPPED);
+
+impl Overlapped {
+    fn as_raw(&self) -> OVERLAPPED {
+        self.0
+    }
+}
+
+impl Default for Overlapped {
+    fn default() -> Self {
+        Overlapped(unsafe {
+            OVERLAPPED {
+                hEvent: CreateEventW(null(), FALSE, FALSE, null()),
+                ..zeroed()
+            }
+        })
+    }
+}
+
+impl Drop for Overlapped {
+    fn drop(&mut self) {
+        if self.0.hEvent != INVALID_HANDLE_VALUE {
+            unsafe {
+                CloseHandle(self.0.hEvent);
+            }
+        }
+        self.0.hEvent = INVALID_HANDLE_VALUE;
     }
 }
 
@@ -766,4 +872,29 @@ fn get_dev_node_parent(dev_node: u32) -> Option<u32> {
         CR_SUCCESS => Some(parent),
         _ => None
     }
+}
+
+fn get_hid_attributes(handle: HANDLE) -> HIDD_ATTRIBUTES {
+    unsafe {
+        let mut attrib = HIDD_ATTRIBUTES {
+            Size: size_of::<HIDD_ATTRIBUTES>() as u32,
+            ..zeroed()
+        };
+        HidD_GetAttributes(handle, &mut attrib);
+        attrib
+    }
+}
+
+fn get_hid_caps(handle: HANDLE) -> Option<HIDP_CAPS> {
+    unsafe {
+        let mut caps = zeroed();
+        let mut pp_data = 0;
+        if HidD_GetPreparsedData(handle, &mut pp_data) != 0 {
+            let r = HidP_GetCaps(pp_data, &mut caps);
+            HidD_FreePreparsedData(pp_data);
+            ensure!(r == HIDP_STATUS_SUCCESS, None);
+            return Some(caps);
+        }
+    };
+    None
 }

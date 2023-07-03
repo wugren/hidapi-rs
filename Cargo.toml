@@ -36,6 +36,8 @@ windows-native = [
     "windows-sys/Win32_Security",
     "windows-sys/Win32_Storage_EnhancedStorage",
     "windows-sys/Win32_Storage_FileSystem",
+    "windows-sys/Win32_System_IO",
+    "windows-sys/Win32_System_Threading",
     "windows-sys/Win32_UI_Shell_PropertiesSystem"
 ]
 
