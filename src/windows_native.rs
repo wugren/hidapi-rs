@@ -13,7 +13,7 @@ use bytemuck::{cast_slice, cast_slice_mut};
 
 use windows_sys::core::{GUID, PCWSTR};
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
-use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetManufacturerString, HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidD_SetNumInputBuffers, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
+use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetIndexedString, HidD_GetManufacturerString, HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidD_SetNumInputBuffers, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_ContainerId, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_GUID, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPKEY, DEVPROPTYPE};
 use windows_sys::Win32::Foundation::{BOOLEAN, CloseHandle, ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
@@ -23,9 +23,7 @@ use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult, WcharString};
 
-//use crate::{ffi, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString, HidDeviceBackendWindows, BusType};
-
-//const STRING_BUF_LEN: usize = 128;
+const STRING_BUF_LEN: usize = 128;
 
 macro_rules! ensure {
     ($cond:expr, $result:expr) => {
@@ -99,7 +97,6 @@ impl HidDevice {
 
 }
 
-#[allow(dead_code, unused_variables)]
 impl HidDeviceBackendBase for HidDevice {
 
     fn write(&self, data: &[u8]) -> HidResult<usize> {
@@ -175,80 +172,25 @@ impl HidDeviceBackendBase for HidDevice {
     fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
         self.blocking.set(blocking);
         Ok(())
-        //let res = unsafe {
-        //    ffi::hid_set_nonblocking(self._hid_device, if blocking { 0i32 } else { 1i32 })
-        //};
-        //if res == -1 {
-        //    Err(HidError::SetBlockingModeError {
-        //        mode: match blocking {
-        //            true => "blocking",
-        //            false => "not blocking",
-        //        },
-        //    })
-        //} else {
-        //    Ok(())
-        //}
-        //todo!()
     }
 
     fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
-        //let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        //let res = unsafe {
-        //    ffi::hid_get_manufacturer_string(
-        //        self._hid_device,
-        //        buf.as_mut_ptr(),
-        //        STRING_BUF_LEN as size_t,
-        //    )
-        //};
-        //let res = self.check_size(res)?;
-        //unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
-        todo!()
+        Ok(self.device_info.manufacturer_string().map(String::from))
     }
 
     fn get_product_string(&self) -> HidResult<Option<String>> {
-        //let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        //let res = unsafe {
-        //    ffi::hid_get_product_string(
-        //        self._hid_device,
-        //        buf.as_mut_ptr(),
-        //        STRING_BUF_LEN as size_t,
-        //    )
-        //};
-        //let res = self.check_size(res)?;
-        //unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
-
-        todo!()
+        Ok(self.device_info.product_string().map(String::from))
     }
 
     fn get_serial_number_string(&self) -> HidResult<Option<String>> {
-        //let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        //let res = unsafe {
-        //    ffi::hid_get_serial_number_string(
-        //        self._hid_device,
-        //        buf.as_mut_ptr(),
-        //        STRING_BUF_LEN as size_t,
-        //    )
-        //};
-        //let res = self.check_size(res)?;
-        //unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
-
-        todo!()
+        Ok(self.device_info.serial_number().map(String::from))
     }
 
     fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
-        //let mut buf = [0 as wchar_t; STRING_BUF_LEN];
-        //let res = unsafe {
-        //    ffi::hid_get_indexed_string(
-        //        self._hid_device,
-        //        index as c_int,
-        //        buf.as_mut_ptr(),
-        //        STRING_BUF_LEN,
-        //    )
-        //};
-        //let res = self.check_size(res)?;
-        //unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
-
-        todo!()
+        let mut buf = [0u16; STRING_BUF_LEN];
+        let res = unsafe { HidD_GetIndexedString(self.device_handle.as_raw(), index as u32, buf.as_mut_ptr() as _, STRING_BUF_LEN as u32) };
+        assert_ne!(res, 0);
+        Ok(buf.split(|c| *c == 0).map(String::from_utf16_lossy).next())
     }
 
     fn get_device_info(&self) -> HidResult<DeviceInfo> {
