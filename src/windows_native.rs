@@ -17,9 +17,9 @@ use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_Fr
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_ContainerId, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_GUID, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPKEY, DEVPROPTYPE};
 use windows_sys::Win32::Foundation::{BOOLEAN, CloseHandle, ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
-use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, WriteFile};
+use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile};
 use windows_sys::Win32::System::IO::{CancelIo, GetOverlappedResult, OVERLAPPED};
-use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+use windows_sys::Win32::System::Threading::{CreateEventW, ResetEvent, WaitForSingleObject};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult, WcharString};
 
@@ -57,14 +57,14 @@ impl HidApiBackend {
 /// Object for accessing HID device
 pub struct HidDevice {
     device_handle: Handle,
-    blocking: Cell<bool>,
+    device_info: DeviceInfo,
     output_report_length: u16,
     input_report_length: usize,
     feature_report_length: u16,
-    read_pending: bool,
+    read_pending: Cell<bool>,
+    blocking: Cell<bool>,
     ol: RefCell<Overlapped>,
     write_ol: RefCell<Overlapped>,
-    device_info: DeviceInfo,
     //buffer: Cell<Option<Vec<u8>>>,
 }
 
@@ -137,22 +137,80 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
-        //let res = unsafe { ffi::hid_read(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t) };
-        //self.check_size(res)
-        todo!()
+        self.read_timeout(buf, if self.blocking.get() { -1 } else { 0 })
     }
 
     fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        //let res = unsafe {
-        //    ffi::hid_read_timeout(
-        //        self._hid_device,
-        //        buf.as_mut_ptr(),
-        //        buf.len() as size_t,
-        //        timeout,
-        //    )
-        //};
-        //self.check_size(res)
-        todo!()
+        assert!(buf.len() > 0);
+        let mut bytes_read = 0;
+        let mut overlapped = self.ol.borrow_mut();
+        let mut active = false;
+        let mut read_buf = vec![0u8; self.input_report_length];
+
+        if !self.read_pending.get() {
+            self.read_pending.set(true);
+
+            let res = unsafe {
+                ResetEvent(overlapped.event_handle());
+                ReadFile(
+                    self.device_handle.as_raw(),
+                    read_buf.as_mut_ptr() as _,
+                    self.input_report_length as u32,
+                    &mut bytes_read,
+                    overlapped.as_raw())
+            };
+            if res == FALSE {
+                let err = unsafe { GetLastError() };
+                if err != ERROR_IO_PENDING {
+                    unsafe { CancelIo(self.device_handle.as_raw()) };
+                    self.read_pending.set(false);
+                    return Err(HidError::HidApiError {message: "dfgdfgdf".to_string() });
+                }
+                active = true;
+            }
+        } else {
+            active = true;
+        }
+
+        if active {
+            if timeout >= 0 {
+                let res = unsafe { WaitForSingleObject(overlapped.event_handle(), timeout as u32) };
+                if res != WAIT_OBJECT_0 {
+                    /* There was no data this time. Return zero bytes available,
+				        but leave the Overlapped I/O running. */
+                    return Ok(0);
+                }
+            }
+
+            let res = unsafe {
+                /* Either WaitForSingleObject() told us that ReadFile has completed, or
+		           we are in non-blocking mode. Get the number of bytes read. The actual
+		           data has been copied to the data[] array which was passed to ReadFile(). */
+                GetOverlappedResult(self.device_handle.as_raw(), overlapped.as_raw(), &mut bytes_read, TRUE)
+            };
+            if res == FALSE {
+                self.read_pending.set(false);
+                return Err(HidError::HidApiError { message: "fdgdfg".to_string()});
+            }
+        }
+        self.read_pending.set(false);
+
+        let mut copy_len = 0;
+        if bytes_read > 0 {
+            /* If report numbers aren't being used, but Windows sticks a report
+			   number (0x0) on the beginning of the report anyway. To make this
+			   work like the other platforms, and to make it work more like the
+			   HID spec, we'll skip over this byte. */
+            if read_buf[0] == 0x0 {
+                bytes_read -= 1;
+                copy_len = usize::min(bytes_read as usize, buf.len());
+                buf[..copy_len].copy_from_slice(&read_buf[1..(1 + copy_len)]);
+            } else {
+                copy_len = usize::min(bytes_read as usize, buf.len());
+                buf[..copy_len].copy_from_slice(&read_buf[0..copy_len]);
+            }
+        }
+        Ok(copy_len)
     }
 
     fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
@@ -183,6 +241,7 @@ impl HidDeviceBackendBase for HidDevice {
         //};
         //self.check_size(res)
         todo!()
+
     }
 
     fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
@@ -748,9 +807,8 @@ fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         .unwrap();
     let handle = open_device(device_path.as_ptr(), true)?;
     assert_ne!(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) }, 0);
-    assert_ne!(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) }, 0);
     let caps = get_hid_caps(handle.as_raw()).unwrap();
-    let device_info = get_device_info(&device_path, handle.as_raw());
+    let device_info = get_device_info(&device_path[..device_path.len() - 1], handle.as_raw());
     let dev = HidDevice {
         device_handle: handle,
         blocking: Cell::new(true),
@@ -758,7 +816,7 @@ fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         input_report_length: caps.InputReportByteLength as usize,
         feature_report_length: caps.FeatureReportByteLength,
         //feature_buf: null_mut(),
-        read_pending: false,
+        read_pending: Cell::new(false),
         //read_buf: null_mut(),
         ol: Default::default(),
         write_ol: Default::default(),
