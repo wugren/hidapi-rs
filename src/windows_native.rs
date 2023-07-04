@@ -9,15 +9,16 @@ use std::ffi::{c_void, CString};
 use std::iter::once;
 use std::mem::{size_of, zeroed};
 use std::ptr::{null, null_mut};
+use bytemuck::{cast_slice, cast_slice_mut};
 
 use windows_sys::core::{GUID, PCWSTR};
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetManufacturerString, HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidD_SetNumInputBuffers, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
-use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPKEY, DEVPROPTYPE};
+use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_ContainerId, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_GUID, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPKEY, DEVPROPTYPE};
 use windows_sys::Win32::Foundation::{BOOLEAN, CloseHandle, ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, WriteFile};
-use windows_sys::Win32::System::IO::{GetOverlappedResult, OVERLAPPED};
+use windows_sys::Win32::System::IO::{CancelIo, GetOverlappedResult, OVERLAPPED};
 use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult, WcharString};
@@ -58,7 +59,7 @@ impl HidApiBackend {
 /// Object for accessing HID device
 pub struct HidDevice {
     device_handle: Handle,
-    blocking: bool,
+    blocking: Cell<bool>,
     output_report_length: u16,
     input_report_length: usize,
     feature_report_length: u16,
@@ -106,7 +107,7 @@ impl HidDeviceBackendBase for HidDevice {
         let mut written = 0;
         let mut overlapped = self.write_ol.borrow_mut();
         let res = self.buffered(data, self.output_report_length as usize, |data| unsafe {
-            WriteFile(self.device_handle.as_raw(), data.as_ptr(), data.len() as u32, &mut written, overlapped.as_raw())
+            WriteFile(self.device_handle.as_raw(), data.as_ptr(), data.len() as u32, null_mut(), overlapped.as_raw())
         });
 
         if res != TRUE {
@@ -172,6 +173,8 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
+        self.blocking.set(blocking);
+        Ok(())
         //let res = unsafe {
         //    ffi::hid_set_nonblocking(self._hid_device, if blocking { 0i32 } else { 1i32 })
         //};
@@ -185,7 +188,7 @@ impl HidDeviceBackendBase for HidDevice {
         //} else {
         //    Ok(())
         //}
-        todo!()
+        //todo!()
     }
 
     fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
@@ -249,37 +252,35 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn get_device_info(&self) -> HidResult<DeviceInfo> {
-        //let raw_device = unsafe { ffi::hid_get_device_info(self._hid_device) };
-        //if raw_device.is_null() {
-        //    match self.check_error() {
-        //        Ok(err) | Err(err) => return Err(err),
-        //    }
-        //}
-//
-        //unsafe { conv_hid_device_info(raw_device) }
-
-        todo!()
+        Ok(self.device_info.clone())
     }
 }
 
 impl HidDeviceBackendWindows for HidDevice {
     fn get_container_id(&self) -> HidResult<GUID> {
-        //let mut container_id: GUID = unsafe { std::mem::zeroed() };
-//
-        //let res = unsafe {
-        //    ffi::windows::hid_winapi_get_container_id(self._hid_device, addr_of_mut!(container_id))
-        //};
-//
-        //if res == -1 {
-        //    match self.check_error() {
-        //        Ok(err) => Err(err),
-        //        Err(err) => Err(err),
-        //    }
-        //} else {
-        //    Ok(container_id)
-        //}
+        let path = self
+            .device_info
+            .path
+            .to_str()
+            .unwrap()
+            .encode_utf16()
+            .chain(once(0))
+            .collect::<Vec<_>>();
 
-        todo!()
+        let device_id = get_device_interface_property(path.as_ptr(), &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)
+            .unwrap();
+
+        let dev_node = get_dev_node(cast_slice(&device_id).as_ptr()).unwrap();
+        let x = get_devnode_property(dev_node, &DEVPKEY_Device_ContainerId, DEVPROP_TYPE_GUID).unwrap();
+        Ok(GUID::from_u128(*bytemuck::from_bytes(&x)))
+    }
+}
+
+impl Drop for HidDevice {
+    fn drop(&mut self) {
+        unsafe {
+            CancelIo(self.device_handle.as_raw());
+        }
     }
 }
 
@@ -503,6 +504,15 @@ fn get_hid_caps(handle: HANDLE) -> Option<HIDP_CAPS> {
     None
 }
 
+fn get_dev_node(path: PCWSTR) -> Option<u32> {
+    let mut node = 0;
+    let cr = unsafe {
+        CM_Locate_DevNodeW(&mut node, path, CM_LOCATE_DEVNODE_NORMAL)
+    };
+    ensure!(cr == CR_SUCCESS, None);
+    Some(node)
+}
+
 
 fn get_interface_list() -> Vec<u16> {
     let interface_class_guid = unsafe {
@@ -612,16 +622,11 @@ fn get_device_info(path: &[u16], handle: HANDLE) -> DeviceInfo {
 fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()> {
     let device_id = get_device_interface_property(interface_path, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
 
-    let dev_node = unsafe {
-        let mut node = 0;
-        let cr = CM_Locate_DevNodeW(&mut node, device_id.as_ptr() as _, CM_LOCATE_DEVNODE_NORMAL);
-        ensure!(cr == CR_SUCCESS, None);
-        get_dev_node_parent(node)?
-    };
+    let dev_node = get_dev_node_parent(get_dev_node(cast_slice(&device_id).as_ptr())?)?;
 
     let compatible_ids = get_devnode_property(dev_node, &DEVPKEY_Device_CompatibleIds, DEVPROP_TYPE_STRING_LIST)?;
 
-    let bus_type = bytemuck::cast_slice(&compatible_ids)
+    let bus_type = cast_slice(&compatible_ids)
         .split(|c| *c == 0)
         .filter_map(|compatible_id| match compatible_id {
             /* USB devices
@@ -655,12 +660,12 @@ fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()>
 fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
     let mut device_id = get_devnode_property(dev_node, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
 
-    to_upper(bytemuck::cast_slice_mut(&mut device_id));
+    to_upper(cast_slice_mut(&mut device_id));
     /* Check for Xbox Common Controller class (XUSB) device.
 	   https://docs.microsoft.com/windows/win32/xinput/directinput-and-xusb-devices
 	   https://docs.microsoft.com/windows/win32/xinput/xinput-and-directinput
 	*/
-    if extract_int_token_value(bytemuck::cast_slice(&device_id), "IG_").is_some() {
+    if extract_int_token_value(cast_slice(&device_id), "IG_").is_some() {
         dev_node = get_dev_node_parent(dev_node)?;
     }
 
@@ -670,7 +675,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
 	   https://docs.microsoft.com/windows-hardware/drivers/install/standard-usb-identifiers
 	   https://docs.microsoft.com/windows-hardware/drivers/usbcon/enumeration-of-interfaces-not-grouped-in-collections
 	*/
-    for hardware_id in bytemuck::cast_slice_mut(&mut hardware_ids).split_mut(|c| *c == 0) {
+    for hardware_id in cast_slice_mut(&mut hardware_ids).split_mut(|c| *c == 0) {
         to_upper(hardware_id);
         if dev.release_number == 0 {
             if let Some(release_number) = extract_int_token_value(hardware_id, "REV_") {
@@ -687,7 +692,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
     /* Try to get USB device manufacturer string if not provided by HidD_GetManufacturerString. */
     if dev.manufacturer_string().map_or(true, str::is_empty) {
         if let Some(manufacturer_string) = get_devnode_property(dev_node, &DEVPKEY_Device_Manufacturer, DEVPROP_TYPE_STRING) {
-            dev.manufacturer_string = u16str_to_wstring(bytemuck::cast_slice(&manufacturer_string));
+            dev.manufacturer_string = u16str_to_wstring(cast_slice(&manufacturer_string));
         }
     }
 
@@ -702,7 +707,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
         }
 
         let device_id = get_devnode_property(usb_dev_node, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
-        let device_id = bytemuck::cast_slice::<u8, u16>(&device_id);
+        let device_id = cast_slice::<u8, u16>(&device_id);
 
         /* Extract substring after last '\\' of Instance ID.
 		   For USB devices it may contain device's serial number.
@@ -734,7 +739,7 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
             dev_node,
             (&PKEY_DeviceInterface_Bluetooth_Manufacturer as *const PROPERTYKEY) as _,
             DEVPROP_TYPE_STRING) {
-            dev.manufacturer_string = u16str_to_wstring(bytemuck::cast_slice(&manufacturer_string));
+            dev.manufacturer_string = u16str_to_wstring(cast_slice(&manufacturer_string));
         }
     }
 
@@ -743,7 +748,7 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
             dev_node,
             (&PKEY_DeviceInterface_Bluetooth_DeviceAddress as *const PROPERTYKEY) as _,
             DEVPROP_TYPE_STRING) {
-            dev.serial_number = u16str_to_wstring(bytemuck::cast_slice(&serial_number));
+            dev.serial_number = u16str_to_wstring(cast_slice(&serial_number));
         }
     }
 
@@ -758,7 +763,7 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
                 .and_then(|parent_dev_node| get_devnode_property(parent_dev_node, &DEVPKEY_NAME, DEVPROP_TYPE_STRING))
         });
         if let Some(product_string) = product_string {
-            dev.product_string = u16str_to_wstring(bytemuck::cast_slice(&product_string));
+            dev.product_string = u16str_to_wstring(cast_slice(&product_string));
         }
     }
 
@@ -790,7 +795,7 @@ fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
     let device_info = get_device_info(&device_path, handle.as_raw());
     let dev = HidDevice {
         device_handle: handle,
-        blocking: true,
+        blocking: Cell::new(true),
         output_report_length: caps.OutputReportByteLength,
         input_report_length: caps.InputReportByteLength as usize,
         feature_report_length: caps.FeatureReportByteLength,
