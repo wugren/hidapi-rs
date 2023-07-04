@@ -65,7 +65,7 @@ pub struct HidDevice {
     ol: RefCell<Overlapped>,
     write_ol: RefCell<Overlapped>,
     device_info: DeviceInfo,
-    buffer: Cell<Option<Vec<u8>>>,
+    //buffer: Cell<Option<Vec<u8>>>,
 }
 
 //unsafe impl Send for HidDevice {}
@@ -76,36 +76,52 @@ impl Debug for HidDevice {
     }
 }
 
-impl HidDevice {
-
-    fn buffered<R, F>(&self, data: &[u8], min_len: usize, write_func: F) -> R where F: FnOnce(&[u8]) -> R {
-        if data.len() >= min_len {
-            write_func(data)
-        } else {
-            let mut write_buf = self
-                .buffer
-                .take()
-                .unwrap_or_else(|| vec![0u8; min_len]);
-            write_buf.resize(min_len, 0);
-            write_buf[..data.len()].copy_from_slice(data);
-            write_buf[data.len()..].fill(0);
-            let r = write_func(&write_buf);
-            self.buffer.set(Some(write_buf));
-            r
-        }
-    }
-
-}
+//impl HidDevice {
+//
+//    fn buffered<R, F>(&self, data: &[u8], min_len: usize, write_func: F) -> R where F: FnOnce(&[u8]) -> R {
+//        if data.len() >= min_len {
+//            write_func(data)
+//        } else {
+//            let mut write_buf = self
+//                .buffer
+//                .take()
+//                .unwrap_or_else(|| vec![0u8; min_len]);
+//            write_buf.resize(min_len, 0);
+//            write_buf[..data.len()].copy_from_slice(data);
+//            write_buf[data.len()..].fill(0);
+//            let r = write_func(&write_buf);
+//            self.buffer.set(Some(write_buf));
+//            r
+//        }
+//    }
+//
+//}
 
 impl HidDeviceBackendBase for HidDevice {
 
     fn write(&self, data: &[u8]) -> HidResult<usize> {
         ensure!(!data.is_empty(), Err(HidError::InvalidZeroSizeData));
+        let mut data = data;
+        let mut buf = Vec::new();
         let mut written = 0;
         let mut overlapped = self.write_ol.borrow_mut();
-        let res = self.buffered(data, self.output_report_length as usize, |data| unsafe {
+
+        /* Make sure the right number of bytes are passed to WriteFile. Windows
+	   expects the number of bytes which are in the _longest_ report (plus
+	   one for the report number) bytes even if the data is a report
+	   which is shorter than that. Windows gives us this value in
+	   caps.OutputReportByteLength. If a user passes in fewer bytes than this,
+	   use cached temporary buffer which is the proper size. */
+        if data.len() < self.output_report_length as usize {
+            buf.resize( self.output_report_length as usize, 0);
+            buf[..data.len()].copy_from_slice(data);
+            buf[data.len()..].fill(0);
+            data = &buf;
+        }
+
+        let res = unsafe {
             WriteFile(self.device_handle.as_raw(), data.as_ptr(), data.len() as u32, null_mut(), overlapped.as_raw())
-        });
+        };
 
         if res != TRUE {
             let err = unsafe { GetLastError() };
@@ -747,7 +763,7 @@ fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         ol: Default::default(),
         write_ol: Default::default(),
         device_info,
-        buffer: Cell::new(None),
+        //buffer: Cell::new(None),
     };
 
     Ok(dev)
