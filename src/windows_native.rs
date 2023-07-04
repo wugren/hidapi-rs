@@ -4,6 +4,7 @@ use std::{
     ffi::CStr,
     fmt::{self, Debug},
 };
+use std::cell::{Cell, RefCell};
 use std::ffi::{c_void, CString};
 use std::iter::once;
 use std::mem::{size_of, zeroed};
@@ -13,11 +14,11 @@ use windows_sys::core::{GUID, PCWSTR};
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetManufacturerString, HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidD_SetNumInputBuffers, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPKEY, DEVPROPTYPE};
-use windows_sys::Win32::Foundation::{BOOLEAN, CloseHandle, FALSE, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE};
+use windows_sys::Win32::Foundation::{BOOLEAN, CloseHandle, ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
-use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
-use windows_sys::Win32::System::IO::OVERLAPPED;
-use windows_sys::Win32::System::Threading::CreateEventW;
+use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, WriteFile};
+use windows_sys::Win32::System::IO::{GetOverlappedResult, OVERLAPPED};
+use windows_sys::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult, WcharString};
 
@@ -59,18 +60,16 @@ pub struct HidDevice {
     device_handle: Handle,
     blocking: bool,
     output_report_length: u16,
-    write_buf: *mut u8,
     input_report_length: usize,
     feature_report_length: u16,
-    feature_buf: *mut u8,
     read_pending: bool,
-    read_buf: *mut u8,
-    ol: Overlapped,
-    write_ol: Overlapped,
-    device_info: DeviceInfo
+    ol: RefCell<Overlapped>,
+    write_ol: RefCell<Overlapped>,
+    device_info: DeviceInfo,
+    buffer: Cell<Option<Vec<u8>>>,
 }
 
-unsafe impl Send for HidDevice {}
+//unsafe impl Send for HidDevice {}
 
 impl Debug for HidDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -78,16 +77,49 @@ impl Debug for HidDevice {
     }
 }
 
+impl HidDevice {
+
+    fn buffered<R, F>(&self, data: &[u8], min_len: usize, write_func: F) -> R where F: FnOnce(&[u8]) -> R {
+        if data.len() >= min_len {
+            write_func(data)
+        } else {
+            let mut write_buf = self
+                .buffer
+                .take()
+                .unwrap_or_else(|| vec![0u8; min_len]);
+            write_buf.resize(min_len, 0);
+            write_buf[..data.len()].copy_from_slice(data);
+            write_buf[data.len()..].fill(0);
+            let r = write_func(&write_buf);
+            self.buffer.set(Some(write_buf));
+            r
+        }
+    }
+
+}
+
 #[allow(dead_code, unused_variables)]
 impl HidDeviceBackendBase for HidDevice {
 
     fn write(&self, data: &[u8]) -> HidResult<usize> {
-        //if data.is_empty() {
-        //    return Err(HidError::InvalidZeroSizeData);
-        //}
-        //let res = unsafe { ffi::hid_write(self._hid_device, data.as_ptr(), data.len() as size_t) };
-        //self.check_size(res)
-        todo!()
+        ensure!(!data.is_empty(), Err(HidError::InvalidZeroSizeData));
+        let mut written = 0;
+        let mut overlapped = self.write_ol.borrow_mut();
+        let res = self.buffered(data, self.output_report_length as usize, |data| unsafe {
+            WriteFile(self.device_handle.as_raw(), data.as_ptr(), data.len() as u32, &mut written, overlapped.as_raw())
+        });
+
+        if res != TRUE {
+            let err = unsafe { GetLastError() };
+            ensure!(err == ERROR_IO_PENDING, Err(HidError::IoError { error: std::io::Error::from_raw_os_error(err as _)}));
+            let res = unsafe { WaitForSingleObject(overlapped.event_handle(), 1000) };
+            assert_eq!(res, WAIT_OBJECT_0);
+            let res = unsafe { GetOverlappedResult(self.device_handle.as_raw(), overlapped.as_raw(), &mut written, FALSE) };
+            assert_eq!(res, TRUE);
+        }
+
+        Ok(written as usize)
+
     }
 
     fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
@@ -298,15 +330,21 @@ impl Drop for Handle {
 struct Overlapped(OVERLAPPED);
 
 impl Overlapped {
-    fn as_raw(&self) -> OVERLAPPED {
-        self.0
+    fn event_handle(&self) -> HANDLE {
+        self.0.hEvent
+    }
+    fn as_raw(&mut self) -> *mut OVERLAPPED {
+        &mut self.0
     }
 }
+
+unsafe impl Send for Overlapped { }
 
 impl Default for Overlapped {
     fn default() -> Self {
         Overlapped(unsafe {
             OVERLAPPED {
+                //todo check if event is null
                 hEvent: CreateEventW(null(), FALSE, FALSE, null()),
                 ..zeroed()
             }
@@ -754,15 +792,15 @@ fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         device_handle: handle,
         blocking: true,
         output_report_length: caps.OutputReportByteLength,
-        write_buf: null_mut(),
         input_report_length: caps.InputReportByteLength as usize,
         feature_report_length: caps.FeatureReportByteLength,
-        feature_buf: null_mut(),
+        //feature_buf: null_mut(),
         read_pending: false,
-        read_buf: null_mut(),
-        ol: Overlapped::default(),
-        write_ol: Overlapped::default(),
+        //read_buf: null_mut(),
+        ol: Default::default(),
+        write_ol: Default::default(),
         device_info,
+        buffer: Cell::new(None),
     };
 
     Ok(dev)
