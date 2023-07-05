@@ -1,5 +1,8 @@
 //! The implementation which uses the C library to perform operations
 
+mod string_utils;
+mod types;
+
 use std::{
     ffi::CStr,
     fmt::{self, Debug},
@@ -15,13 +18,15 @@ use windows_sys::core::{GUID, PCWSTR};
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetIndexedString, HidD_GetManufacturerString, HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidD_SetNumInputBuffers, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_ContainerId, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_GUID, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPKEY, DEVPROPTYPE};
-use windows_sys::Win32::Foundation::{BOOLEAN, CloseHandle, ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
+use windows_sys::Win32::Foundation::{BOOLEAN, ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile};
-use windows_sys::Win32::System::IO::{CancelIo, GetOverlappedResult, OVERLAPPED};
-use windows_sys::Win32::System::Threading::{CreateEventW, ResetEvent, WaitForSingleObject};
+use windows_sys::Win32::System::IO::{CancelIo, GetOverlappedResult};
+use windows_sys::Win32::System::Threading::{ResetEvent, WaitForSingleObject};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult, WcharString};
+use crate::windows_native::string_utils::{extract_int_token_value, starts_with_ignore_case, to_upper, u16str_to_wstring};
+use crate::windows_native::types::{Handle, InternalBuyType, Overlapped};
 
 const STRING_BUF_LEN: usize = 128;
 
@@ -302,132 +307,6 @@ impl Drop for HidDevice {
 }
 
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-enum InternalBuyType {
-    Unknown,
-    Usb,
-    Bluetooth,
-    BluetoothLE,
-    I2c,
-    Spi,
-}
-
-impl From<InternalBuyType> for BusType {
-    fn from(value: InternalBuyType) -> Self {
-        match value {
-            InternalBuyType::Unknown => BusType::Unknown,
-            InternalBuyType::Usb => BusType::Usb,
-            InternalBuyType::Bluetooth => BusType::Bluetooth,
-            InternalBuyType::BluetoothLE => BusType::Bluetooth,
-            InternalBuyType::I2c => BusType::I2c,
-            InternalBuyType::Spi => BusType::Spi
-        }
-    }
-}
-
-struct Handle(HANDLE);
-
-impl Handle {
-    fn as_raw(&self) -> HANDLE {
-        self.0
-    }
-}
-
-impl Drop for Handle {
-    fn drop(&mut self) {
-        if self.0 != INVALID_HANDLE_VALUE {
-            unsafe {
-                CloseHandle(self.0);
-            }
-        }
-        self.0 = INVALID_HANDLE_VALUE;
-    }
-}
-
-
-struct Overlapped(OVERLAPPED);
-
-impl Overlapped {
-    fn event_handle(&self) -> HANDLE {
-        self.0.hEvent
-    }
-    fn as_raw(&mut self) -> *mut OVERLAPPED {
-        &mut self.0
-    }
-}
-
-unsafe impl Send for Overlapped { }
-
-impl Default for Overlapped {
-    fn default() -> Self {
-        Overlapped(unsafe {
-            OVERLAPPED {
-                //todo check if event is null
-                hEvent: CreateEventW(null(), FALSE, FALSE, null()),
-                ..zeroed()
-            }
-        })
-    }
-}
-
-impl Drop for Overlapped {
-    fn drop(&mut self) {
-        if self.0.hEvent != INVALID_HANDLE_VALUE {
-            unsafe {
-                CloseHandle(self.0.hEvent);
-            }
-        }
-        self.0.hEvent = INVALID_HANDLE_VALUE;
-    }
-}
-
-
-fn to_upper(u16str: &mut [u16]) {
-    for c in u16str {
-        if let Ok(t) = u8::try_from(*c) {
-            *c = t.to_ascii_uppercase().into();
-        }
-    }
-}
-
-fn find_first_upper_case(u16str: &[u16], pattern: &str) -> Option<usize> {
-    u16str
-        .windows(pattern.encode_utf16().count())
-        .enumerate()
-        .filter(|(_, ss)| ss
-            .iter()
-            .copied()
-            .zip(pattern.encode_utf16())
-            .all(|(l, r)| l == r))
-        .map(|(i, _)| i)
-        .next()
-}
-
-fn starts_with_ignore_case(utf16str: &[u16], pattern: &str) -> bool {
-    //The hidapi c library uses `contains` instead of `starts_with`,
-    // but as far as I can tell `starts_with` is a better choice
-    char::decode_utf16(utf16str.iter().copied())
-        .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
-        .zip(pattern.chars())
-        .all(|(l, r)| l.eq_ignore_ascii_case(&r))
-}
-
-fn extract_int_token_value(u16str: &[u16], token: &str) -> Option<u32> {
-    let start = find_first_upper_case(u16str, token)? + token.encode_utf16().count();
-    char::decode_utf16(u16str[start..].iter().copied())
-        .map_while(|c| c
-            .ok()
-            .and_then(|c| c.to_digit(16)))
-        .reduce(|l, r| l * 16 + r)
-}
-
-fn u16str_to_wstring(u16str: &[u16]) -> WcharString {
-    String::from_utf16(u16str)
-        .map(WcharString::String)
-        .unwrap_or_else(|_| WcharString::Raw(u16str.to_vec()))
-}
-
-
 fn get_device_interface_property(interface_path: PCWSTR, property_key: &DEVPROPKEY, expected_property_type: DEVPROPTYPE) -> Option<Vec<u8>> {
     let mut property_type = 0;
     let mut len = 0;
@@ -595,7 +474,7 @@ fn open_device(path: PCWSTR, open_rw: bool) -> HidResult<Handle> {
         )
     };
     ensure!(handle != INVALID_HANDLE_VALUE, Err(HidError::IoError{ error: std::io::Error::last_os_error() }));
-    Ok(Handle(handle))
+    Ok(Handle::from_raw(handle))
 }
 
 fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOOLEAN, handle: HANDLE) -> WcharString {
