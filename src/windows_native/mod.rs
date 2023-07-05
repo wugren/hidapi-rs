@@ -2,6 +2,7 @@
 
 mod string_utils;
 mod types;
+mod error;
 
 use std::{
     ffi::CStr,
@@ -9,13 +10,12 @@ use std::{
 };
 use std::cell::{Cell, RefCell};
 use std::ffi::{c_void, CString};
-use std::iter::once;
 use std::mem::{size_of, zeroed};
 use std::ptr::{null, null_mut};
 use bytemuck::{cast_slice, cast_slice_mut};
 
 use windows_sys::core::{GUID, PCWSTR};
-use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
+use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CR_BUFFER_SMALL, CR_SUCCESS};
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetIndexedString, HidD_GetManufacturerString, HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidD_SetNumInputBuffers, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_ContainerId, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_GUID, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPKEY, DEVPROPTYPE};
 use windows_sys::Win32::Foundation::{BOOLEAN, ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, HANDLE, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
@@ -26,7 +26,7 @@ use windows_sys::Win32::System::Threading::{ResetEvent, WaitForSingleObject};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult, WcharString};
 use crate::windows_native::string_utils::{extract_int_token_value, starts_with_ignore_case};
-use crate::windows_native::types::{Handle, InternalBuyType, Overlapped, U16Str, U16String};
+use crate::windows_native::types::{DevNode, Handle, InternalBuyType, Overlapped, U16Str, U16String};
 
 const STRING_BUF_LEN: usize = 128;
 
@@ -281,20 +281,14 @@ impl HidDeviceBackendBase for HidDevice {
 
 impl HidDeviceBackendWindows for HidDevice {
     fn get_container_id(&self) -> HidResult<GUID> {
-        let path = self
-            .device_info
-            .path
-            .to_str()
-            .unwrap()
-            .encode_utf16()
-            .chain(once(0))
-            .collect::<Vec<_>>();
+        let path = U16String::try_from(self.device_info.path()).unwrap();
 
         let device_id = get_device_interface_property(path.as_ptr(), &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)
             .unwrap();
+        let device_id= U16Str::from_slice(cast_slice(&device_id));
 
-        let dev_node = get_dev_node(cast_slice(&device_id).as_ptr()).unwrap();
-        let x = get_devnode_property(dev_node, &DEVPKEY_Device_ContainerId, DEVPROP_TYPE_GUID).unwrap();
+        let dev_node = DevNode::from_device_id(device_id).unwrap();
+        let x = dev_node.get_property(&DEVPKEY_Device_ContainerId, DEVPROP_TYPE_GUID).unwrap();
         Ok(GUID::from_u128(*bytemuck::from_bytes(&x)))
     }
 }
@@ -338,43 +332,6 @@ fn get_device_interface_property(interface_path: PCWSTR, property_key: &DEVPROPK
     Some(property_value)
 }
 
-fn get_devnode_property(dev_node: u32, property_key: *const DEVPROPKEY, expected_property_type: DEVPROPTYPE) -> Option<Vec<u8>> {
-    let mut property_type = 0;
-    let mut len = 0;
-    let cr = unsafe {
-        CM_Get_DevNode_PropertyW(
-            dev_node,
-            property_key,
-            &mut property_type,
-            null_mut(),
-            &mut len,
-            0
-        )
-    };
-    ensure!(cr == CR_BUFFER_SMALL && property_type == expected_property_type, None);
-    let mut property_value = vec![0u8; len as usize];
-    let cr = unsafe {
-        CM_Get_DevNode_PropertyW(
-            dev_node,
-            property_key,
-            &mut property_type,
-            property_value.as_mut_ptr(),
-            &mut len,
-            0
-        )
-    };
-    assert_eq!(property_value.len(), len as usize);
-    ensure!(cr == CR_SUCCESS, None);
-    Some(property_value)
-}
-
-fn get_dev_node_parent(dev_node: u32) -> Option<u32> {
-    let mut parent = 0;
-    match unsafe { CM_Get_Parent(&mut parent, dev_node, 0)} {
-        CR_SUCCESS => Some(parent),
-        _ => None
-    }
-}
 
 fn get_hid_attributes(handle: HANDLE) -> HIDD_ATTRIBUTES {
     unsafe {
@@ -400,16 +357,6 @@ fn get_hid_caps(handle: HANDLE) -> Option<HIDP_CAPS> {
     };
     None
 }
-
-fn get_dev_node(path: PCWSTR) -> Option<u32> {
-    let mut node = 0;
-    let cr = unsafe {
-        CM_Locate_DevNodeW(&mut node, path, CM_LOCATE_DEVNODE_NORMAL)
-    };
-    ensure!(cr == CR_SUCCESS, None);
-    Some(node)
-}
-
 
 fn get_interface_list() -> Vec<u16> {
     let interface_class_guid = unsafe {
@@ -515,10 +462,11 @@ fn get_device_info(path: &U16Str, handle: HANDLE) -> DeviceInfo {
 
 fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()> {
     let device_id = get_device_interface_property(interface_path, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
+    let device_id = U16Str::from_slice(cast_slice(&device_id));
 
-    let dev_node = get_dev_node_parent(get_dev_node(cast_slice(&device_id).as_ptr())?)?;
+    let dev_node = DevNode::from_device_id(device_id).ok()?.parent().ok()?;
 
-    let compatible_ids = get_devnode_property(dev_node, &DEVPKEY_Device_CompatibleIds, DEVPROP_TYPE_STRING_LIST)?;
+    let compatible_ids = dev_node.get_property(&DEVPKEY_Device_CompatibleIds, DEVPROP_TYPE_STRING_LIST).ok()?;
 
     let bus_type = cast_slice(&compatible_ids)
         .split(|c| *c == 0)
@@ -551,8 +499,8 @@ fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()>
     Some(())
 }
 
-fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
-    let mut device_id = get_devnode_property(dev_node, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
+fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> Option<()> {
+    let mut device_id = dev_node.get_property(&DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING).ok()?;
     let device_id = U16Str::from_slice_mut(cast_slice_mut(&mut device_id));
 
     device_id.make_uppercase_ascii();
@@ -561,10 +509,10 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
 	   https://docs.microsoft.com/windows/win32/xinput/xinput-and-directinput
 	*/
     if extract_int_token_value(device_id.as_slice(), "IG_").is_some() {
-        dev_node = get_dev_node_parent(dev_node)?;
+        dev_node = dev_node.parent().ok()?;
     }
 
-    let mut hardware_ids = get_devnode_property(dev_node, &DEVPKEY_Device_HardwareIds, DEVPROP_TYPE_STRING_LIST)?;
+    let mut hardware_ids = dev_node.get_property(&DEVPKEY_Device_HardwareIds, DEVPROP_TYPE_STRING_LIST).ok()?;
 
     /* Get additional information from USB device's Hardware ID
 	   https://docs.microsoft.com/windows-hardware/drivers/install/standard-usb-identifiers
@@ -587,7 +535,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
 
     /* Try to get USB device manufacturer string if not provided by HidD_GetManufacturerString. */
     if dev.manufacturer_string().map_or(true, str::is_empty) {
-        if let Some(manufacturer_string) = get_devnode_property(dev_node, &DEVPKEY_Device_Manufacturer, DEVPROP_TYPE_STRING) {
+        if let Ok(manufacturer_string) = dev_node.get_property(&DEVPKEY_Device_Manufacturer, DEVPROP_TYPE_STRING) {
             dev.manufacturer_string = U16Str::from_slice(cast_slice(&manufacturer_string)).into();
         }
     }
@@ -599,10 +547,10 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
             /* Get devnode parent to reach out composite parent USB device.
                https://docs.microsoft.com/windows-hardware/drivers/usbcon/enumeration-of-the-composite-parent-device
             */
-            usb_dev_node = get_dev_node_parent(dev_node)?;
+            usb_dev_node = dev_node.parent().ok()?;
         }
 
-        let device_id = get_devnode_property(usb_dev_node, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
+        let device_id = usb_dev_node.get_property(&DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING).ok()?;
         let device_id = cast_slice::<u8, u16>(&device_id);
 
         /* Extract substring after last '\\' of Instance ID.
@@ -629,10 +577,9 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: u32) -> Option<()> {
    Request this info via dev node properties instead.
    https://docs.microsoft.com/answers/questions/401236/hidd-getproductstring-with-ble-hid-device.html
 */
-fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
+fn get_ble_info(dev: &mut DeviceInfo, dev_node: DevNode) -> Option<()>{
     if dev.manufacturer_string().map_or(true, str::is_empty) {
-        if let Some(manufacturer_string) = get_devnode_property(
-            dev_node,
+        if let Ok(manufacturer_string) = dev_node.get_property(
             (&PKEY_DeviceInterface_Bluetooth_Manufacturer as *const PROPERTYKEY) as _,
             DEVPROP_TYPE_STRING) {
             dev.manufacturer_string = U16Str::from_slice(cast_slice(&manufacturer_string)).into();
@@ -640,8 +587,7 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
     }
 
     if dev.serial_number().map_or(true, str::is_empty) {
-        if let Some(serial_number) = get_devnode_property(
-            dev_node,
+        if let Ok(serial_number) = dev_node.get_property(
             (&PKEY_DeviceInterface_Bluetooth_DeviceAddress as *const PROPERTYKEY) as _,
             DEVPROP_TYPE_STRING) {
             dev.serial_number = U16Str::from_slice(cast_slice(&serial_number)).into();
@@ -649,16 +595,15 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: u32) -> Option<()>{
     }
 
     if dev.product_string().map_or(true, str::is_empty) {
-        let product_string = get_devnode_property(
-            dev_node,
+        let product_string = dev_node.get_property(
             (&PKEY_DeviceInterface_Bluetooth_ModelNumber as *const PROPERTYKEY) as _,
             DEVPROP_TYPE_STRING
-        ).or_else(|| {
+        ).or_else(|_| {
             /* Fallback: Get devnode grandparent to reach out Bluetooth LE device node */
-            get_dev_node_parent(dev_node)
-                .and_then(|parent_dev_node| get_devnode_property(parent_dev_node, &DEVPKEY_NAME, DEVPROP_TYPE_STRING))
+            dev_node.parent()
+                .and_then(|parent_dev_node| parent_dev_node.get_property(&DEVPKEY_NAME, DEVPROP_TYPE_STRING))
         });
-        if let Some(product_string) = product_string {
+        if let Ok(product_string) = product_string {
             dev.product_string = U16Str::from_slice(cast_slice(&product_string)).into();
         }
     }

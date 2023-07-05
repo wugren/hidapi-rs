@@ -1,4 +1,5 @@
 mod string;
+mod dev_node;
 
 use std::mem::zeroed;
 use std::ptr::null;
@@ -8,6 +9,7 @@ use windows_sys::Win32::System::Threading::CreateEventW;
 use crate::BusType;
 
 pub use string::{U16String, U16Str};
+pub use dev_node::DevNode;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum InternalBuyType {
