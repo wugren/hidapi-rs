@@ -1,12 +1,11 @@
-use crate::WcharString;
 
-pub(crate) fn to_upper(u16str: &mut [u16]) {
-    for c in u16str {
-        if let Ok(t) = u8::try_from(*c) {
-            *c = t.to_ascii_uppercase().into();
-        }
-    }
-}
+//pub(crate) fn to_upper(u16str: &mut [u16]) {
+//    for c in u16str {
+//        if let Ok(t) = u8::try_from(*c) {
+//            *c = t.to_ascii_uppercase().into();
+//        }
+//    }
+//}
 
 pub(crate) fn find_first_upper_case(u16str: &[u16], pattern: &str) -> Option<usize> {
     u16str
@@ -39,8 +38,8 @@ pub(crate) fn extract_int_token_value(u16str: &[u16], token: &str) -> Option<u32
         .reduce(|l, r| l * 16 + r)
 }
 
-pub(crate) fn u16str_to_wstring(u16str: &[u16]) -> WcharString {
-    String::from_utf16(u16str)
-        .map(WcharString::String)
-        .unwrap_or_else(|_| WcharString::Raw(u16str.to_vec()))
-}
+//pub(crate) fn u16str_to_wstring(u16str: &[u16]) -> WcharString {
+//    String::from_utf16(u16str)
+//        .map(WcharString::String)
+//        .unwrap_or_else(|_| WcharString::Raw(u16str.to_vec()))
+//}

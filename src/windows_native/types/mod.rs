@@ -1,9 +1,13 @@
+mod string;
+
 use std::mem::zeroed;
 use std::ptr::null;
 use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::IO::OVERLAPPED;
 use windows_sys::Win32::System::Threading::CreateEventW;
 use crate::BusType;
+
+pub use string::{U16String, U16Str};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum InternalBuyType {
