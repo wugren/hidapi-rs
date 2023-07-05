@@ -1,9 +1,12 @@
 use std::ffi::CStr;
 use std::iter::once;
-use std::ops::Deref;
+use std::mem::size_of;
+use std::ops::{Deref, DerefMut};
 use std::str::Utf8Error;
 use windows_sys::core::PCWSTR;
+use windows_sys::Win32::Devices::Properties::{DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPTYPE};
 use crate::WcharString;
+use crate::windows_native::types::DeviceProperty;
 
 #[repr(transparent)]
 pub struct U16Str([u16]);
@@ -88,11 +91,17 @@ impl U16String {
     }
 }
 
-impl<'a> Deref for U16String {
+impl Deref for U16String {
     type Target = U16Str;
 
     fn deref(&self) -> &Self::Target {
         unsafe { U16Str::from_slice_unsafe(self.0.as_slice()) }
+    }
+}
+
+impl DerefMut for U16String {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { U16Str::from_slice_mut_unsafe(self.0.as_mut_slice()) }
     }
 }
 
@@ -105,6 +114,58 @@ impl TryFrom<&CStr> for U16String {
             .encode_utf16()
             .chain(once(0))
             .collect()))
+    }
+}
+
+impl From<U16String> for WcharString {
+    fn from(value: U16String) -> Self {
+        (&*value).into()
+    }
+}
+
+unsafe impl DeviceProperty for U16String {
+    const TYPE: DEVPROPTYPE = DEVPROP_TYPE_STRING;
+
+    fn create_sized(bytes: usize) -> Self {
+        assert_eq!(bytes % size_of::<u16>(), 0);
+        U16String(vec![0u16; bytes / size_of::<u16>()])
+    }
+
+    fn as_ptr_mut(&mut self) -> *mut u8 {
+        self.0.as_mut_ptr() as _
+    }
+
+    fn validate(&self) {
+        assert!(self.0.last().is_some_and(is_null), "Slice is not null terminated");
+        debug_assert_eq!(self.0.iter().filter(|c| is_null(c)).count(), 1, "Found null character in the middle");
+    }
+}
+
+pub struct U16StringList(pub Vec<u16>);
+
+unsafe impl DeviceProperty for U16StringList {
+    const TYPE: DEVPROPTYPE = DEVPROP_TYPE_STRING_LIST;
+
+    fn create_sized(bytes: usize) -> Self {
+        assert_eq!(bytes % size_of::<u16>(), 0);
+        U16StringList(vec![0u16; bytes / size_of::<u16>()])
+    }
+
+    fn as_ptr_mut(&mut self) -> *mut u8 {
+        self.0.as_mut_ptr() as _
+    }
+
+    fn validate(&self) {
+        assert!(self.0.last().is_some_and(is_null), "Slice is not null terminated");
+    }
+}
+
+impl U16StringList {
+    pub fn iter(&self) -> impl Iterator<Item=&U16Str> {
+        U16Str::from_slice_list(self.0.as_slice())
+    }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item=&mut U16Str> {
+        U16Str::from_slice_list_mut(self.0.as_mut_slice())
     }
 }
 

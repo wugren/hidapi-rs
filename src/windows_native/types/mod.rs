@@ -1,15 +1,38 @@
 mod string;
 mod dev_node;
 
-use std::mem::zeroed;
+use std::mem::{size_of, zeroed};
 use std::ptr::null;
+use windows_sys::core::GUID;
+use windows_sys::Win32::Devices::Properties::{DEVPROP_TYPE_GUID, DEVPROPTYPE};
 use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::IO::OVERLAPPED;
 use windows_sys::Win32::System::Threading::CreateEventW;
 use crate::BusType;
 
-pub use string::{U16String, U16Str};
+pub use string::{U16String, U16StringList, U16Str};
 pub use dev_node::DevNode;
+
+pub unsafe trait DeviceProperty {
+    const TYPE: DEVPROPTYPE;
+    fn create_sized(bytes: usize) -> Self;
+    fn as_ptr_mut(&mut self) -> *mut u8;
+    fn validate(&self) {}
+}
+
+unsafe impl DeviceProperty for GUID {
+    const TYPE: DEVPROPTYPE = DEVPROP_TYPE_GUID;
+
+    fn create_sized(bytes: usize) -> Self {
+        assert_eq!(bytes, size_of::<GUID>());
+        GUID::from_u128(0)
+    }
+
+    fn as_ptr_mut(&mut self) -> *mut u8 {
+        (self as *mut GUID) as *mut u8
+    }
+}
+
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum InternalBuyType {

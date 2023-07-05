@@ -1,9 +1,9 @@
 use std::ptr::null_mut;
-use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL};
-use windows_sys::Win32::Devices::Properties::{DEVPROPKEY, DEVPROPTYPE};
+use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
+use windows_sys::Win32::Devices::Properties::DEVPROPKEY;
 use crate::ensure;
 use crate::windows_native::error::{check_config, WinError, WinResult};
-use crate::windows_native::types::U16Str;
+use crate::windows_native::types::{DeviceProperty, U16Str};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -27,7 +27,7 @@ impl DevNode {
         Ok(Self(parent))
     }
 
-    pub fn get_property(self, property_key: *const DEVPROPKEY, expected_property_type: DEVPROPTYPE) -> WinResult<Vec<u8>> {
+    pub fn get_property_size<T: DeviceProperty>(self, property_key: *const DEVPROPKEY) -> WinResult<usize> {
         let mut property_type = 0;
         let mut len = 0;
         let cr = unsafe {
@@ -40,21 +40,31 @@ impl DevNode {
                 0
             )
         };
-        ensure!(cr == CR_BUFFER_SMALL && property_type == expected_property_type, Err(WinError::Config(cr)));
-        let mut property_value = vec![0u8; len as usize];
+        ensure!(cr == CR_BUFFER_SMALL, Err(WinError::Config(cr)));
+        assert_eq!(property_type, T::TYPE);
+        Ok(len as usize)
+    }
+
+    pub fn get_property<T: DeviceProperty>(self, property_key: *const DEVPROPKEY) -> WinResult<T> {
+        let size = self.get_property_size::<T>(property_key)?;
+        let mut property = T::create_sized(size);
+        let mut property_type = 0;
+        let mut len = size as u32;
         let cr = unsafe {
             CM_Get_DevNode_PropertyW(
                 self.0,
                 property_key,
                 &mut property_type,
-                property_value.as_mut_ptr(),
+                property.as_ptr_mut(),
                 &mut len,
                 0
             )
         };
-        assert_eq!(property_value.len(), len as usize);
-        check_config(cr)?;
-        Ok(property_value)
+        assert_eq!(size, len as usize);
+        assert_eq!(cr, CR_SUCCESS);
+        //check_config(cr)?;
+        Ok(property)
     }
 
 }
+
