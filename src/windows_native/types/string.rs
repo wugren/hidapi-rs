@@ -85,12 +85,6 @@ impl From<&U16Str> for WcharString {
 
 pub struct U16String(Vec<u16>);
 
-impl U16String {
-    pub fn as_ptr(&self) -> PCWSTR {
-        self.0.as_ptr()
-    }
-}
-
 impl Deref for U16String {
     type Target = U16Str;
 

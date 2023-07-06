@@ -14,7 +14,7 @@ use std::{
 use std::cell::{Cell, RefCell};
 use std::ptr::{null, null_mut};
 
-use windows_sys::core::{GUID, PCWSTR};
+use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetIndexedString, HidD_SetNumInputBuffers};
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId};
 use windows_sys::Win32::Foundation::{ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
@@ -26,7 +26,7 @@ use crate::windows_native::device_info::get_device_info;
 use crate::windows_native::error::WinResult;
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
 use crate::windows_native::interfaces::Interface;
-use crate::windows_native::types::{DevNode, Handle, Overlapped, U16String};
+use crate::windows_native::types::{DevNode, Handle, Overlapped, U16Str, U16String};
 
 const STRING_BUF_LEN: usize = 128;
 
@@ -305,7 +305,7 @@ fn enumerate_devices(vendor_id: u16, product_id: u16) -> WinResult<Vec<DeviceInf
     Ok(Interface::get_interface_list()?
         .iter()
         .filter_map(|device_interface| {
-            let device_handle = open_device(device_interface.as_ptr(), false).ok()?;
+            let device_handle = open_device(device_interface, false).ok()?;
             let attrib = get_hid_attributes(&device_handle);
             ((vendor_id == 0 || attrib.VendorID == vendor_id) && (product_id == 0 || attrib.ProductID == product_id))
                 .then(|| get_device_info(device_interface, &device_handle))
@@ -313,10 +313,10 @@ fn enumerate_devices(vendor_id: u16, product_id: u16) -> WinResult<Vec<DeviceInf
         .collect())
 }
 
-fn open_device(path: PCWSTR, open_rw: bool) -> HidResult<Handle> {
+fn open_device(path: &U16Str, open_rw: bool) -> HidResult<Handle> {
     let handle = unsafe {
         CreateFileW(
-            path,
+            path.as_ptr(),
             match open_rw {
                 true => GENERIC_WRITE | GENERIC_READ,
                 false => 0
@@ -345,9 +345,9 @@ fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<HidDevice> {
 fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
     let device_path = U16String::try_from(device_path)
         .unwrap();
-    let handle = open_device(device_path.as_ptr(), true)?;
+    let handle = open_device(&device_path, true)?;
     assert_ne!(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) }, 0);
-    let caps = get_hid_caps(&handle).unwrap();
+    let caps = get_hid_caps(&handle)?;
     let device_info = get_device_info(&device_path, &handle);
     let dev = HidDevice {
         device_handle: handle,
