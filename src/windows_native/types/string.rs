@@ -67,6 +67,27 @@ impl U16Str {
         }
     }
 
+    pub fn starts_with_ignore_case(&self, pattern: &str) -> bool {
+        char::decode_utf16(self.as_slice().iter().copied())
+            .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
+            .zip(pattern.chars())
+            .all(|(l, r)| l.eq_ignore_ascii_case(&r))
+    }
+
+    pub fn find_index(&self, pattern: &str) -> Option<usize> {
+        self
+            .as_slice()
+            .windows(pattern.encode_utf16().count())
+            .enumerate()
+            .filter(|(_, ss)| ss
+                .iter()
+                .copied()
+                .zip(pattern.encode_utf16())
+                .all(|(l, r)| l == r))
+            .map(|(i, _)| i)
+            .next()
+    }
+
 }
 
 impl ToString for U16Str {

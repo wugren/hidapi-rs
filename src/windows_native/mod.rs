@@ -1,6 +1,5 @@
 //! The implementation which uses the C library to perform operations
 
-mod string_utils;
 mod types;
 mod error;
 mod interfaces;

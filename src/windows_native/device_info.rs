@@ -9,7 +9,6 @@ use crate::{BusType, DeviceInfo, WcharString};
 use crate::windows_native::error::WinResult;
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
 use crate::windows_native::interfaces::Interface;
-use crate::windows_native::string_utils::{extract_int_token_value, starts_with_ignore_case};
 use crate::windows_native::types::{DevNode, Handle, InternalBuyType, U16Str, U16String, U16StringList};
 
 fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOOLEAN, handle: &Handle) -> WcharString {
@@ -58,21 +57,23 @@ fn get_internal_info(interface_path: &U16Str, dev: &mut DeviceInfo) -> WinResult
 
     let bus_type = compatible_ids
         .iter()
-        .filter_map(|compatible_id| match compatible_id.as_slice() {
+        .filter_map(|compatible_id| match compatible_id {
+            //The hidapi c library uses `contains` instead of `starts_with`,
+            // but as far as I can tell `starts_with` is a better choice
             /* USB devices
 		   https://docs.microsoft.com/windows-hardware/drivers/hid/plug-and-play-support
 		   https://docs.microsoft.com/windows-hardware/drivers/install/standard-usb-identifiers */
-            id if starts_with_ignore_case(id, "USB") => Some(InternalBuyType::Usb),
+            id if id.starts_with_ignore_case("USB") => Some(InternalBuyType::Usb),
             /* Bluetooth devices
 		   https://docs.microsoft.com/windows-hardware/drivers/bluetooth/installing-a-bluetooth-device */
-            id if starts_with_ignore_case(id, "BTHENUM") => Some(InternalBuyType::Bluetooth),
-            id if starts_with_ignore_case(id, "BTHLEDEVICE") => Some(InternalBuyType::BluetoothLE),
+            id if id.starts_with_ignore_case("BTHENUM") => Some(InternalBuyType::Bluetooth),
+            id if id.starts_with_ignore_case("BTHLEDEVICE") => Some(InternalBuyType::BluetoothLE),
             /* I2C devices
 		   https://docs.microsoft.com/windows-hardware/drivers/hid/plug-and-play-support-and-power-management */
-            id if starts_with_ignore_case(id, "PNP0C50") => Some(InternalBuyType::I2c),
+            id if id.starts_with_ignore_case("PNP0C50") => Some(InternalBuyType::I2c),
             /* SPI devices
 		   https://docs.microsoft.com/windows-hardware/drivers/hid/plug-and-play-for-spi */
-            id if starts_with_ignore_case(id, "PNP0C51") => Some(InternalBuyType::Spi),
+            id if id.starts_with_ignore_case("PNP0C51") => Some(InternalBuyType::Spi),
             _ => None
         })
         .next()
@@ -95,7 +96,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> WinResult<()> {
 	   https://docs.microsoft.com/windows/win32/xinput/directinput-and-xusb-devices
 	   https://docs.microsoft.com/windows/win32/xinput/xinput-and-directinput
 	*/
-    if extract_int_token_value(device_id.as_slice(), "IG_").is_some() {
+    if extract_int_token_value(&device_id, "IG_").is_some() {
         dev_node = dev_node.parent()?;
     }
 
@@ -109,12 +110,12 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> WinResult<()> {
         hardware_id.make_uppercase_ascii();
 
         if dev.release_number == 0 {
-            if let Some(release_number) = extract_int_token_value(hardware_id.as_slice(), "REV_") {
+            if let Some(release_number) = extract_int_token_value(hardware_id, "REV_") {
                 dev.release_number = release_number as u16;
             }
         }
         if dev.interface_number == -1 {
-            if let Some(interface_number) = extract_int_token_value(hardware_id.as_slice(), "MI_") {
+            if let Some(interface_number) = extract_int_token_value(hardware_id, "MI_") {
                 dev.interface_number = interface_number as i32;
             }
         }
@@ -193,4 +194,13 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: DevNode) -> WinResult<()>{
     }
 
     Ok(())
+}
+
+fn extract_int_token_value(u16str: &U16Str, token: &str) -> Option<u32> {
+    let start = u16str.find_index(token)? + token.encode_utf16().count();
+    char::decode_utf16(u16str.as_slice()[start..].iter().copied())
+        .map_while(|c| c
+            .ok()
+            .and_then(|c| c.to_digit(16)))
+        .reduce(|l, r| l * 16 + r)
 }
