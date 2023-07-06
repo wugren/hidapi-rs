@@ -66,6 +66,10 @@ impl Win32Error {
         }
     }
 
+    //pub fn is_error(self) -> bool {
+    //    !matches!(self, Win32Error::Success | Win32Error::IoPending)
+    //}
+
 }
 
 impl From<Win32Error> for WinError {

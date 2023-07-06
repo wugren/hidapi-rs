@@ -13,6 +13,7 @@ use std::{
     fmt::{self, Debug},
 };
 use std::cell::{Cell, RefCell};
+use std::mem::zeroed;
 use std::ptr::{null, null_mut};
 
 use windows_sys::core::GUID;
@@ -20,12 +21,12 @@ use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetIndexedString, H
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId};
 use windows_sys::Win32::Foundation::{ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile};
-use windows_sys::Win32::System::IO::{CancelIo, GetOverlappedResult};
+use windows_sys::Win32::System::IO::{CancelIo, DeviceIoControl, GetOverlappedResult};
 use windows_sys::Win32::System::Threading::{ResetEvent, WaitForSingleObject};
 use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
 use crate::windows_native::dev_node::DevNode;
 use crate::windows_native::device_info::get_device_info;
-use crate::windows_native::error::{check_boolean, WinResult};
+use crate::windows_native::error::{check_boolean, Win32Error, WinError, WinResult};
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
 use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string::{U16Str, U16String};
@@ -249,12 +250,38 @@ impl HidDeviceBackendBase for HidDevice {
     /// Upon return, the first byte will still contain the Report ID, and the
     /// report data will start in `buf[1]`.
     fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
-        //let res = unsafe {
-        //    ffi::hid_get_feature_report(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t)
-        //};
-        //self.check_size(res)
-        todo!()
+        const IOCTL_HID_GET_FEATURE: u32 = ((0x0000000b) << 16) | ((0) << 14) | (((100)) << 2) | (2);
 
+        ensure!(!buf.is_empty(),  Err(HidError::InvalidZeroSizeData));
+        let mut ol = unsafe { zeroed() };
+        let mut bytes_returned = 0;
+
+        let res = unsafe {
+            DeviceIoControl(
+                self.device_handle.as_raw(),
+                IOCTL_HID_GET_FEATURE,
+                buf.as_mut_ptr() as _,
+                buf.len() as u32,
+                buf.as_mut_ptr() as _,
+                buf.len() as u32,
+                &mut bytes_returned,
+            &mut ol)
+        };
+        if res != TRUE {
+            let err = Win32Error::last();
+            ensure!(err == Win32Error::IoPending, Err(HidError::from(WinError::from(err))))
+        }
+
+        let res = unsafe {
+            GetOverlappedResult(self.device_handle.as_raw(), &mut ol, &mut bytes_returned, TRUE)
+        };
+        ensure!(res == TRUE, Err(HidError::from(WinError::from(Win32Error::last()))));
+
+        if buf[0] == 0x0 {
+            bytes_returned += 1;
+        }
+
+        Ok(bytes_returned as usize)
     }
 
     fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
