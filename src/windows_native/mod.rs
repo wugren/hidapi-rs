@@ -16,7 +16,7 @@ use std::cell::{Cell, RefCell};
 use std::ptr::{null, null_mut};
 
 use windows_sys::core::GUID;
-use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetIndexedString, HidD_SetNumInputBuffers};
+use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetIndexedString, HidD_SetFeature, HidD_SetNumInputBuffers};
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId};
 use windows_sys::Win32::Foundation::{ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile};
@@ -25,7 +25,7 @@ use windows_sys::Win32::System::Threading::{ResetEvent, WaitForSingleObject};
 use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
 use crate::windows_native::dev_node::DevNode;
 use crate::windows_native::device_info::get_device_info;
-use crate::windows_native::error::WinResult;
+use crate::windows_native::error::{check_boolean, WinResult};
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
 use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string::{U16Str, U16String};
@@ -223,22 +223,26 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
-        //if data.is_empty() {
-        //    return Err(HidError::InvalidZeroSizeData);
-        //}
-        //let res = unsafe {
-        //    ffi::hid_send_feature_report(self._hid_device, data.as_ptr(), data.len() as size_t)
-        //};
-        //let res = self.check_size(res)?;
-        //if res != data.len() {
-        //    Err(HidError::IncompleteSendError {
-        //        sent: res,
-        //        all: data.len(),
-        //    })
-        //} else {
-        //    Ok(())
-        //}
-        todo!()
+        ensure!(!data.is_empty(), Err(HidError::InvalidZeroSizeData));
+
+        let mut data = data;
+        let mut buf = Vec::new();
+
+        /* Windows expects at least caps.FeatureReportByteLength bytes passed
+	   to HidD_SetFeature(), even if the report is shorter. Any less sent and
+	   the function fails with error ERROR_INVALID_PARAMETER set. Any more
+	   and HidD_SetFeature() silently truncates the data sent in the report
+	   to caps.FeatureReportByteLength. */
+        if data.len() < self.feature_report_length as usize {
+            buf.resize( self.feature_report_length as usize, 0);
+            buf[..data.len()].copy_from_slice(data);
+            buf[data.len()..].fill(0);
+            data = &buf;
+        }
+
+        check_boolean(unsafe { HidD_SetFeature(self.device_handle.as_raw(), data.as_ptr() as _, data.len() as u32) })?;
+
+        Ok(())
     }
 
     /// Set the first byte of `buf` to the 'Report ID' of the report to be read.
