@@ -27,7 +27,7 @@ impl DevNode {
         Ok(Self(parent))
     }
 
-    pub fn get_property_size<T: DeviceProperty>(self, property_key: *const DEVPROPKEY) -> WinResult<usize> {
+    fn get_property_size<T: DeviceProperty>(self, property_key: *const DEVPROPKEY) -> WinResult<usize> {
         let mut property_type = 0;
         let mut len = 0;
         let cr = unsafe {

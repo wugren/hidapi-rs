@@ -1,15 +1,13 @@
 use std::ffi::{c_void, CString};
 use std::mem::{size_of, zeroed};
-use bytemuck::cast_slice;
-use windows_sys::core::PCWSTR;
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetManufacturerString, HidD_GetProductString, HidD_GetSerialNumberString};
-use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME, DEVPROP_TYPE_STRING};
+use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME};
 use windows_sys::Win32::Foundation::{BOOLEAN, HANDLE};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, WcharString};
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
-use crate::windows_native::interfaces::get_device_interface_property;
+use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string_utils::{extract_int_token_value, starts_with_ignore_case};
 use crate::windows_native::types::{DevNode, InternalBuyType, U16Str, U16String, U16StringList};
 
@@ -45,18 +43,16 @@ pub fn get_device_info(path: &U16Str, handle: HANDLE) -> DeviceInfo {
         bus_type: BusType::Unknown,
     };
 
-    get_internal_info(path.as_ptr(), &mut dev);
+    get_internal_info(path, &mut dev);
     dev
 }
 
-fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()> {
-    let device_id = get_device_interface_property(interface_path, &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)?;
-    let device_id = U16Str::from_slice(cast_slice(&device_id));
+fn get_internal_info(interface_path: &U16Str, dev: &mut DeviceInfo) -> Option<()> {
+    let device_id: U16String = Interface::get_property(interface_path, &DEVPKEY_Device_InstanceId).ok()?;
 
-    let dev_node = DevNode::from_device_id(device_id).ok()?.parent().ok()?;
+    let dev_node = DevNode::from_device_id(&device_id).ok()?.parent().ok()?;
 
     let compatible_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_CompatibleIds)
-        .map_err(|err| println!("err: {:?}", err))
         .ok()?;
 
     let bus_type = compatible_ids
@@ -103,7 +99,6 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> Option<()> {
     }
 
     let mut hardware_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_HardwareIds)
-        .map_err(|err| println!("err: {:?}", err))
         .ok()?;
 
     /* Get additional information from USB device's Hardware ID

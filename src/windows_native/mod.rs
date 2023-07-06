@@ -13,20 +13,20 @@ use std::{
 };
 use std::cell::{Cell, RefCell};
 use std::ptr::{null, null_mut};
-use bytemuck::{cast_slice};
 
 use windows_sys::core::{GUID, PCWSTR};
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetIndexedString, HidD_SetNumInputBuffers};
-use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING};
+use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId};
 use windows_sys::Win32::Foundation::{ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile};
 use windows_sys::Win32::System::IO::{CancelIo, GetOverlappedResult};
 use windows_sys::Win32::System::Threading::{ResetEvent, WaitForSingleObject};
 use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
 use crate::windows_native::device_info::get_device_info;
+use crate::windows_native::error::WinResult;
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
-use crate::windows_native::interfaces::{get_device_interface_property, get_interface_list};
-use crate::windows_native::types::{DevNode, Handle, Overlapped, U16Str, U16String};
+use crate::windows_native::interfaces::Interface;
+use crate::windows_native::types::{DevNode, Handle, Overlapped, U16String};
 
 const STRING_BUF_LEN: usize = 128;
 
@@ -43,7 +43,7 @@ macro_rules! ensure {
 pub struct HidApiBackend;
 impl HidApiBackend {
     pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
-        Ok(enumerate_devices(0, 0))
+        Ok(enumerate_devices(0, 0)?)
     }
 
     pub fn open(vid: u16, pid: u16) -> HidResult<HidDevice> {
@@ -284,12 +284,10 @@ impl HidDeviceBackendWindows for HidDevice {
         let path = U16String::try_from(self.device_info.path())
             .expect("device path is not valid unicode");
 
-        let device_id = get_device_interface_property(path.as_ptr(), &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)
-            .unwrap();
-        let device_id= U16Str::from_slice(cast_slice(&device_id));
+        let device_id: U16String = Interface::get_property(&path, &DEVPKEY_Device_InstanceId)?;
 
-        let dev_node = DevNode::from_device_id(device_id).unwrap();
-        let guid = dev_node.get_property(&DEVPKEY_Device_ContainerId).unwrap();
+        let dev_node = DevNode::from_device_id(&device_id)?;
+        let guid = dev_node.get_property(&DEVPKEY_Device_ContainerId)?;
         Ok(guid)
     }
 }
@@ -303,8 +301,8 @@ impl Drop for HidDevice {
 }
 
 
-fn enumerate_devices(vendor_id: u16, product_id: u16) -> Vec<DeviceInfo> {
-    get_interface_list()
+fn enumerate_devices(vendor_id: u16, product_id: u16) -> WinResult<Vec<DeviceInfo>> {
+    Ok(Interface::get_interface_list()?
         .iter()
         .filter_map(|device_interface| {
             let device_handle = open_device(device_interface.as_ptr(), false).ok()?;
@@ -312,7 +310,7 @@ fn enumerate_devices(vendor_id: u16, product_id: u16) -> Vec<DeviceInfo> {
             ((vendor_id == 0 || attrib.VendorID == vendor_id) && (product_id == 0 || attrib.ProductID == product_id))
                 .then(|| get_device_info(device_interface, device_handle.as_raw()))
         })
-        .collect()
+        .collect())
 }
 
 fn open_device(path: PCWSTR, open_rw: bool) -> HidResult<Handle> {
@@ -335,7 +333,7 @@ fn open_device(path: PCWSTR, open_rw: bool) -> HidResult<Handle> {
 }
 
 fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<HidDevice> {
-    let dev = enumerate_devices(vid, pid)
+    let dev = enumerate_devices(vid, pid)?
         .into_iter()
         .filter(|dev| dev.vendor_id == vid && dev.product_id == pid)
         .filter(|dev| sn.map_or(true, |sn| dev.serial_number().is_some_and(|n| sn == n)))
