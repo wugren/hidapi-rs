@@ -281,7 +281,8 @@ impl HidDeviceBackendBase for HidDevice {
 
 impl HidDeviceBackendWindows for HidDevice {
     fn get_container_id(&self) -> HidResult<GUID> {
-        let path = U16String::try_from(self.device_info.path()).unwrap();
+        let path = U16String::try_from(self.device_info.path())
+            .expect("device path is not valid unicode");
 
         let device_id = get_device_interface_property(path.as_ptr(), &DEVPKEY_Device_InstanceId, DEVPROP_TYPE_STRING)
             .unwrap();

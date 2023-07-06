@@ -55,7 +55,9 @@ fn get_internal_info(interface_path: PCWSTR, dev: &mut DeviceInfo) -> Option<()>
 
     let dev_node = DevNode::from_device_id(device_id).ok()?.parent().ok()?;
 
-    let compatible_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_CompatibleIds).ok()?;
+    let compatible_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_CompatibleIds)
+        .map_err(|err| println!("err: {:?}", err))
+        .ok()?;
 
     let bus_type = compatible_ids
         .iter()
@@ -100,7 +102,9 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> Option<()> {
         dev_node = dev_node.parent().ok()?;
     }
 
-    let mut hardware_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_HardwareIds).ok()?;
+    let mut hardware_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_HardwareIds)
+        .map_err(|err| println!("err: {:?}", err))
+        .ok()?;
 
     /* Get additional information from USB device's Hardware ID
 	   https://docs.microsoft.com/windows-hardware/drivers/install/standard-usb-identifiers

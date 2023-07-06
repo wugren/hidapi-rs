@@ -16,14 +16,14 @@ impl DevNode {
         let cr = unsafe {
             CM_Locate_DevNodeW(&mut node, device_id.as_ptr(), CM_LOCATE_DEVNODE_NORMAL)
         };
-        check_config(cr)?;
+        check_config(cr, CR_SUCCESS)?;
         Ok(Self(node))
     }
 
     pub fn parent(self) -> WinResult<Self> {
         let mut parent = 0;
         let cr = unsafe { CM_Get_Parent(&mut parent, self.0, 0) };
-        check_config(cr)?;
+        check_config(cr, CR_SUCCESS)?;
         Ok(Self(parent))
     }
 
@@ -40,8 +40,8 @@ impl DevNode {
                 0
             )
         };
-        ensure!(cr == CR_BUFFER_SMALL, Err(WinError::Config(cr)));
-        assert_eq!(property_type, T::TYPE);
+        check_config(cr, CR_BUFFER_SMALL)?;
+        ensure!(property_type == T::TYPE, Err(WinError::WrongPropertyDataType));
         Ok(len as usize)
     }
 
@@ -60,9 +60,8 @@ impl DevNode {
                 0
             )
         };
-        assert_eq!(size, len as usize);
-        assert_eq!(cr, CR_SUCCESS);
-        //check_config(cr)?;
+        check_config(cr, CR_SUCCESS)?;
+        ensure!(size == len as usize, Err(WinError::UnexpectedReturnSize));
         Ok(property)
     }
 
