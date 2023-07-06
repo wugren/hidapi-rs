@@ -1,6 +1,3 @@
-mod string;
-mod dev_node;
-
 use std::mem::{size_of, zeroed};
 use std::ptr::null;
 use windows_sys::core::GUID;
@@ -9,9 +6,6 @@ use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_
 use windows_sys::Win32::System::IO::OVERLAPPED;
 use windows_sys::Win32::System::Threading::CreateEventW;
 use crate::BusType;
-
-pub use string::{U16String, U16StringList, U16Str};
-pub use dev_node::DevNode;
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe trait DeviceProperty {

@@ -3,7 +3,8 @@ use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_Get_DevNode_Pr
 use windows_sys::Win32::Devices::Properties::DEVPROPKEY;
 use crate::ensure;
 use crate::windows_native::error::{check_config, WinError, WinResult};
-use crate::windows_native::types::{DeviceProperty, U16Str};
+use crate::windows_native::string::U16Str;
+use crate::windows_native::types::DeviceProperty;
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]

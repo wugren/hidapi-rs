@@ -5,7 +5,8 @@ use windows_sys::Win32::Devices::Properties::DEVPROPKEY;
 use crate::ensure;
 use crate::windows_native::error::{check_config, WinError, WinResult};
 use crate::windows_native::hid::get_interface_guid;
-use crate::windows_native::types::{DeviceProperty, U16Str, U16StringList};
+use crate::windows_native::string::{U16Str, U16StringList};
+use crate::windows_native::types::DeviceProperty;
 
 pub struct Interface;
 

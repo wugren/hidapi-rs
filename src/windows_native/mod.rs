@@ -5,6 +5,8 @@ mod error;
 mod interfaces;
 mod hid;
 mod device_info;
+mod string;
+mod dev_node;
 
 use std::{
     ffi::CStr,
@@ -21,11 +23,13 @@ use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED,
 use windows_sys::Win32::System::IO::{CancelIo, GetOverlappedResult};
 use windows_sys::Win32::System::Threading::{ResetEvent, WaitForSingleObject};
 use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
+use crate::windows_native::dev_node::DevNode;
 use crate::windows_native::device_info::get_device_info;
 use crate::windows_native::error::WinResult;
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
 use crate::windows_native::interfaces::Interface;
-use crate::windows_native::types::{DevNode, Handle, Overlapped, U16Str, U16String};
+use crate::windows_native::string::{U16Str, U16String};
+use crate::windows_native::types::{Handle, Overlapped};
 
 const STRING_BUF_LEN: usize = 128;
 
