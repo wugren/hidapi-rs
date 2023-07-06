@@ -6,6 +6,7 @@ use windows_sys::Win32::Foundation::{BOOLEAN, HANDLE};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, WcharString};
+use crate::windows_native::error::WinResult;
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
 use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string_utils::{extract_int_token_value, starts_with_ignore_case};
@@ -43,17 +44,17 @@ pub fn get_device_info(path: &U16Str, handle: &Handle) -> DeviceInfo {
         bus_type: BusType::Unknown,
     };
 
-    get_internal_info(path, &mut dev);
+    //If this fails just ignore it. The data might be incomplete but at least there is something
+    let _ = get_internal_info(path, &mut dev);
     dev
 }
 
-fn get_internal_info(interface_path: &U16Str, dev: &mut DeviceInfo) -> Option<()> {
-    let device_id: U16String = Interface::get_property(interface_path, &DEVPKEY_Device_InstanceId).ok()?;
+fn get_internal_info(interface_path: &U16Str, dev: &mut DeviceInfo) -> WinResult<()> {
+    let device_id: U16String = Interface::get_property(interface_path, &DEVPKEY_Device_InstanceId)?;
 
-    let dev_node = DevNode::from_device_id(&device_id).ok()?.parent().ok()?;
+    let dev_node = DevNode::from_device_id(&device_id)?.parent()?;
 
-    let compatible_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_CompatibleIds)
-        .ok()?;
+    let compatible_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_CompatibleIds)?;
 
     let bus_type = compatible_ids
         .iter()
@@ -78,16 +79,16 @@ fn get_internal_info(interface_path: &U16Str, dev: &mut DeviceInfo) -> Option<()
         .unwrap_or(InternalBuyType::Unknown);
     dev.bus_type = bus_type.into();
     match bus_type {
-        InternalBuyType::Usb => get_usb_info(dev, dev_node),
-        InternalBuyType::BluetoothLE => get_ble_info(dev, dev_node),
-        _ => None
+        InternalBuyType::Usb => get_usb_info(dev, dev_node)?,
+        InternalBuyType::BluetoothLE => get_ble_info(dev, dev_node)?,
+        _ => ()
     };
 
-    Some(())
+    Ok(())
 }
 
-fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> Option<()> {
-    let mut device_id: U16String = dev_node.get_property(&DEVPKEY_Device_InstanceId).ok()?;
+fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> WinResult<()> {
+    let mut device_id: U16String = dev_node.get_property(&DEVPKEY_Device_InstanceId)?;
 
     device_id.make_uppercase_ascii();
     /* Check for Xbox Common Controller class (XUSB) device.
@@ -95,11 +96,10 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> Option<()> {
 	   https://docs.microsoft.com/windows/win32/xinput/xinput-and-directinput
 	*/
     if extract_int_token_value(device_id.as_slice(), "IG_").is_some() {
-        dev_node = dev_node.parent().ok()?;
+        dev_node = dev_node.parent()?;
     }
 
-    let mut hardware_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_HardwareIds)
-        .ok()?;
+    let mut hardware_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_HardwareIds)?;
 
     /* Get additional information from USB device's Hardware ID
 	   https://docs.microsoft.com/windows-hardware/drivers/install/standard-usb-identifiers
@@ -134,10 +134,10 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> Option<()> {
             /* Get devnode parent to reach out composite parent USB device.
                https://docs.microsoft.com/windows-hardware/drivers/usbcon/enumeration-of-the-composite-parent-device
             */
-            usb_dev_node = dev_node.parent().ok()?;
+            usb_dev_node = dev_node.parent()?;
         }
 
-        let device_id: U16String = usb_dev_node.get_property(&DEVPKEY_Device_InstanceId).ok()?;
+        let device_id: U16String = usb_dev_node.get_property(&DEVPKEY_Device_InstanceId)?;
 
         /* Extract substring after last '\\' of Instance ID.
 		   For USB devices it may contain device's serial number.
@@ -157,14 +157,14 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> Option<()> {
         dev.interface_number = 0;
     }
 
-    Some(())
+    Ok(())
 }
 
 /* HidD_GetProductString/HidD_GetManufacturerString/HidD_GetSerialNumberString is not working for BLE HID devices
    Request this info via dev node properties instead.
    https://docs.microsoft.com/answers/questions/401236/hidd-getproductstring-with-ble-hid-device.html
 */
-fn get_ble_info(dev: &mut DeviceInfo, dev_node: DevNode) -> Option<()>{
+fn get_ble_info(dev: &mut DeviceInfo, dev_node: DevNode) -> WinResult<()>{
     if dev.manufacturer_string().map_or(true, str::is_empty) {
         if let Ok(manufacturer_string) = dev_node.get_property::<U16String>(
             (&PKEY_DeviceInterface_Bluetooth_Manufacturer as *const PROPERTYKEY) as _) {
@@ -192,5 +192,5 @@ fn get_ble_info(dev: &mut DeviceInfo, dev_node: DevNode) -> Option<()>{
         }
     }
 
-    Some(())
+    Ok(())
 }
