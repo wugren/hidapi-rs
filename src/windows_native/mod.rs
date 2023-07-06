@@ -306,9 +306,9 @@ fn enumerate_devices(vendor_id: u16, product_id: u16) -> WinResult<Vec<DeviceInf
         .iter()
         .filter_map(|device_interface| {
             let device_handle = open_device(device_interface.as_ptr(), false).ok()?;
-            let attrib = get_hid_attributes(device_handle.as_raw());
+            let attrib = get_hid_attributes(&device_handle);
             ((vendor_id == 0 || attrib.VendorID == vendor_id) && (product_id == 0 || attrib.ProductID == product_id))
-                .then(|| get_device_info(device_interface, device_handle.as_raw()))
+                .then(|| get_device_info(device_interface, &device_handle))
         })
         .collect())
 }
@@ -347,8 +347,8 @@ fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         .unwrap();
     let handle = open_device(device_path.as_ptr(), true)?;
     assert_ne!(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) }, 0);
-    let caps = get_hid_caps(handle.as_raw()).unwrap();
-    let device_info = get_device_info(&device_path, handle.as_raw());
+    let caps = get_hid_caps(&handle).unwrap();
+    let device_info = get_device_info(&device_path, &handle);
     let dev = HidDevice {
         device_handle: handle,
         blocking: Cell::new(true),

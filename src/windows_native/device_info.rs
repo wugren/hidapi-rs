@@ -9,12 +9,12 @@ use crate::{BusType, DeviceInfo, WcharString};
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
 use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string_utils::{extract_int_token_value, starts_with_ignore_case};
-use crate::windows_native::types::{DevNode, InternalBuyType, U16Str, U16String, U16StringList};
+use crate::windows_native::types::{DevNode, Handle, InternalBuyType, U16Str, U16String, U16StringList};
 
-fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOOLEAN, handle: HANDLE) -> WcharString {
+fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOOLEAN, handle: &Handle) -> WcharString {
     //Return empty string on failure to match the c implementation
     let mut string = [0u16; 256];
-    if unsafe { func(handle, string.as_mut_ptr() as _, (size_of::<u16>() * string.len()) as u32) } != 0 {
+    if unsafe { func(handle.as_raw(), string.as_mut_ptr() as _, (size_of::<u16>() * string.len()) as u32) } != 0 {
         U16Str::from_slice_list(&string)
             .map(WcharString::from)
             .next()
@@ -25,7 +25,7 @@ fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOO
     }
 }
 
-pub fn get_device_info(path: &U16Str, handle: HANDLE) -> DeviceInfo {
+pub fn get_device_info(path: &U16Str, handle: &Handle) -> DeviceInfo {
     let attrib = get_hid_attributes(handle);
     let caps = get_hid_caps(handle)
         .unwrap_or(unsafe { zeroed() });
