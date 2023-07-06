@@ -147,7 +147,7 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        assert!(buf.len() > 0);
+        assert!(!buf.is_empty());
         let mut bytes_read = 0;
         let mut overlapped = self.ol.borrow_mut();
         let mut active = false;
@@ -336,8 +336,7 @@ fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<HidDevice> {
     let dev = enumerate_devices(vid, pid)?
         .into_iter()
         .filter(|dev| dev.vendor_id == vid && dev.product_id == pid)
-        .filter(|dev| sn.map_or(true, |sn| dev.serial_number().is_some_and(|n| sn == n)))
-        .next()
+        .find(|dev| sn.map_or(true, |sn| dev.serial_number().is_some_and(|n| sn == n)))
         .ok_or(HidError::HidApiErrorEmpty)?;
     open_path(dev.path())
 }

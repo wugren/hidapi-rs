@@ -13,6 +13,7 @@ use crate::BusType;
 pub use string::{U16String, U16StringList, U16Str};
 pub use dev_node::DevNode;
 
+#[allow(clippy::missing_safety_doc)]
 pub unsafe trait DeviceProperty {
     const TYPE: DEVPROPTYPE;
     fn create_sized(bytes: usize) -> Self;
