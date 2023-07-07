@@ -59,7 +59,7 @@
 //! an opt-in that can be enabled with the `macos-shared-device` feature flag.
 
 extern crate libc;
-#[cfg(feature = "linux-native")]
+#[cfg(all(feature = "linux-native", target_os = "linux"))]
 extern crate nix;
 
 //#[cfg(target_os = "windows")]
@@ -73,8 +73,8 @@ mod ffi;
 #[cfg(hidapi)]
 mod hidapi;
 
-#[cfg(feature = "linux-native")]
-#[cfg_attr(docsrs, doc(cfg(feature = "linux-native")))]
+#[cfg(all(feature = "linux-native", target_os = "linux"))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "linux-native", target_os = "linux"))))]
 mod linux_native;
 #[cfg(target_os = "macos")]
 #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
@@ -84,7 +84,7 @@ mod macos;
 mod windows;
 
 #[cfg(feature = "windows-native")]
-#[cfg_attr(docsrs, doc(cfg(feature = "windows-native")))]
+#[cfg_attr(docsrs, doc(cfg(fall(feature = "linux-native", target_os = "linux"))))]
 mod windows_native;
 
 use libc::wchar_t;
@@ -98,9 +98,9 @@ pub use error::HidError;
 
 #[cfg(hidapi)]
 use crate::hidapi::HidApiBackend;
-#[cfg(feature = "linux-native")]
+#[cfg(all(feature = "linux-native", target_os = "linux"))]
 use linux_native::HidApiBackend;
-#[cfg(feature = "windows-native")]
+#[cfg(all(feature = "windows-native", target_os = "windows"))]
 use windows_native::HidApiBackend;
 
 pub type HidResult<T> = Result<T, HidError>;
