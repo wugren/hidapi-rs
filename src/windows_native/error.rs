@@ -28,7 +28,10 @@ impl WinError {
 
 impl From<WinError> for HidError {
     fn from(value: WinError) -> Self {
-        HidError::HidApiError { message: format!("WinError: {:?}", value)}
+        match value {
+            WinError::Win32(Win32Error::Generic(err)) => HidError::IoError { error: std::io::Error::from_raw_os_error(err as _) },
+            err => HidError::HidApiError { message: format!("WinError: {:?}", err)}
+        }
     }
 }
 
