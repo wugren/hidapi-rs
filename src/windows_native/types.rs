@@ -2,10 +2,11 @@ use std::mem::{size_of, zeroed};
 use std::ptr::null;
 use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::Properties::{DEVPROP_TYPE_GUID, DEVPROPTYPE};
-use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE};
-use windows_sys::Win32::System::IO::OVERLAPPED;
-use windows_sys::Win32::System::Threading::CreateEventW;
-use crate::BusType;
+use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE, TRUE};
+use windows_sys::Win32::System::IO::{GetOverlappedResultEx, OVERLAPPED};
+use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE};
+use crate::{BusType, ensure};
+use crate::windows_native::error::{WinError, WinResult};
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe trait DeviceProperty {
@@ -84,6 +85,22 @@ impl Overlapped {
     pub fn as_raw(&mut self) -> *mut OVERLAPPED {
         &mut self.0
     }
+
+    pub fn get_result(&mut self, handle: &Handle, timeout: Option<u32>) -> WinResult<usize> {
+        let mut bytes_written = 0;
+        let cr = unsafe {
+            GetOverlappedResultEx(
+                handle.as_raw(),
+                self.as_raw(),
+                &mut bytes_written,
+                timeout.unwrap_or(INFINITE),
+                FALSE
+            )
+        };
+        ensure!(cr == TRUE, Err(WinError::last()));
+        Ok(bytes_written as usize)
+    }
+
 }
 
 unsafe impl Send for Overlapped { }

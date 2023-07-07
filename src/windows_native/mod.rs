@@ -113,7 +113,6 @@ impl HidDeviceBackendBase for HidDevice {
         ensure!(!data.is_empty(), Err(HidError::InvalidZeroSizeData));
         let mut data = data;
         let mut buf = Vec::new();
-        let mut written = 0;
         let mut overlapped = self.write_ol.borrow_mut();
 
         /* Make sure the right number of bytes are passed to WriteFile. Windows
@@ -134,15 +133,12 @@ impl HidDeviceBackendBase for HidDevice {
         };
 
         if res != TRUE {
-            let err = unsafe { GetLastError() };
-            ensure!(err == ERROR_IO_PENDING, Err(HidError::IoError { error: std::io::Error::from_raw_os_error(err as _)}));
-            let res = unsafe { WaitForSingleObject(overlapped.event_handle(), 1000) };
-            assert_eq!(res, WAIT_OBJECT_0);
-            let res = unsafe { GetOverlappedResult(self.device_handle.as_raw(), overlapped.as_raw(), &mut written, FALSE) };
-            assert_eq!(res, TRUE);
+            let err = Win32Error::last();
+            ensure!(err == Win32Error::IoPending, Err(err.into()));
+            Ok(overlapped.get_result(&self.device_handle, Some(1000))?)
+        } else {
+            Ok(0)
         }
-
-        Ok(written as usize)
 
     }
 
@@ -154,7 +150,7 @@ impl HidDeviceBackendBase for HidDevice {
         assert!(!buf.is_empty());
         let mut bytes_read = 0;
         let mut overlapped = self.ol.borrow_mut();
-        let mut active = false;
+        let mut io_runnig = false;
         let mut read_buf = vec![0u8; self.input_report_length];
 
         if !self.read_pending.get() {
@@ -169,39 +165,30 @@ impl HidDeviceBackendBase for HidDevice {
                     &mut bytes_read,
                     overlapped.as_raw())
             };
-            if res == FALSE {
-                let err = unsafe { GetLastError() };
-                if err != ERROR_IO_PENDING {
+            if res != TRUE {
+                let err = Win32Error::last();
+                if err != Win32Error::IoPending {
                     unsafe { CancelIo(self.device_handle.as_raw()) };
                     self.read_pending.set(false);
-                    return Err(HidError::HidApiError {message: "dfgdfgdf".to_string() });
+                    return Err(err.into());
                 }
-                active = true;
+                io_runnig = true;
             }
         } else {
-            active = true;
+            io_runnig = true;
         }
 
-        if active {
-            if timeout >= 0 {
-                let res = unsafe { WaitForSingleObject(overlapped.event_handle(), timeout as u32) };
-                if res != WAIT_OBJECT_0 {
-                    /* There was no data this time. Return zero bytes available,
-				        but leave the Overlapped I/O running. */
-                    return Ok(0);
+        if io_runnig {
+            let res = overlapped.get_result(&self.device_handle, u32::try_from(timeout).ok());
+            bytes_read = match res {
+                Ok(written) => written as u32,
+                //There was no data this time. Return zero bytes available, but leave the Overlapped I/O running.
+                Err(WinError::WaitTimedOut) => return Ok(0),
+                Err(err) => {
+                    self.read_pending.set(false);
+                    return Err(err.into())
                 }
-            }
-
-            let res = unsafe {
-                /* Either WaitForSingleObject() told us that ReadFile has completed, or
-		           we are in non-blocking mode. Get the number of bytes read. The actual
-		           data has been copied to the data[] array which was passed to ReadFile(). */
-                GetOverlappedResult(self.device_handle.as_raw(), overlapped.as_raw(), &mut bytes_read, TRUE)
             };
-            if res == FALSE {
-                self.read_pending.set(false);
-                return Err(HidError::HidApiError { message: "fdgdfg".to_string()});
-            }
         }
         self.read_pending.set(false);
 
@@ -269,7 +256,7 @@ impl HidDeviceBackendBase for HidDevice {
         };
         if res != TRUE {
             let err = Win32Error::last();
-            ensure!(err == Win32Error::IoPending, Err(HidError::from(WinError::from(err))))
+            ensure!(err == Win32Error::IoPending, Err(err.into()))
         }
 
         let res = unsafe {

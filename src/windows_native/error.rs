@@ -14,7 +14,16 @@ pub enum WinError {
     NoSuchValue,
     WrongPropertyDataType,
     UnexpectedReturnSize,
-    InvalidPreparsedData
+    InvalidPreparsedData,
+    WaitTimedOut
+}
+
+impl WinError {
+
+    pub fn last() -> Self {
+        Self::from(Win32Error::last())
+    }
+
 }
 
 impl From<WinError> for HidError {
@@ -53,7 +62,8 @@ pub fn check_boolean(ret: BOOLEAN) -> WinResult<()> {
 pub enum Win32Error {
     Generic(WIN32_ERROR),
     Success,
-    IoPending
+    IoPending,
+    WaitTimedOut
 }
 
 impl Win32Error {
@@ -62,6 +72,7 @@ impl Win32Error {
         match unsafe { GetLastError() }  {
             NO_ERROR => Self::Success,
             ERROR_IO_PENDING => Self::IoPending,
+            ERROR_IO_INCOMPLETE | WAIT_TIMEOUT => Self::WaitTimedOut,
             code => Self::Generic(code)
         }
     }
@@ -74,6 +85,15 @@ impl Win32Error {
 
 impl From<Win32Error> for WinError {
     fn from(value: Win32Error) -> Self {
-        Self::Win32(value)
+        match value {
+            Win32Error::WaitTimedOut => Self::WaitTimedOut,
+            err => Self::Win32(err)
+        }
+    }
+}
+
+impl From<Win32Error> for HidError {
+    fn from(value: Win32Error) -> Self {
+        HidError::from(WinError::from(value))
     }
 }
