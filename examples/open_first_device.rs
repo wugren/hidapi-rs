@@ -17,7 +17,6 @@ fn main() {
 
         let device_info = hidapi
             .device_list()
-            .skip(4)
             .next()
             .expect("No devices are available!")
             .clone();
