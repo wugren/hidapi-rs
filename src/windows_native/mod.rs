@@ -13,16 +13,15 @@ use std::{
     fmt::{self, Debug},
 };
 use std::cell::{Cell, RefCell};
-use std::mem::zeroed;
 use std::ptr::{null, null_mut};
 
 use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetIndexedString, HidD_SetFeature, HidD_SetNumInputBuffers};
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId};
-use windows_sys::Win32::Foundation::{ERROR_IO_PENDING, FALSE, GENERIC_READ, GENERIC_WRITE, GetLastError, INVALID_HANDLE_VALUE, TRUE, WAIT_OBJECT_0};
+use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE, TRUE};
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile};
-use windows_sys::Win32::System::IO::{CancelIo, DeviceIoControl, GetOverlappedResult};
-use windows_sys::Win32::System::Threading::{ResetEvent, WaitForSingleObject};
+use windows_sys::Win32::System::IO::{CancelIo, DeviceIoControl};
+use windows_sys::Win32::System::Threading::ResetEvent;
 use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
 use crate::windows_native::dev_node::DevNode;
 use crate::windows_native::device_info::get_device_info;
@@ -68,14 +67,53 @@ impl HidApiBackend {
 pub struct HidDevice {
     device_handle: Handle,
     device_info: DeviceInfo,
-    output_report_length: u16,
-    input_report_length: usize,
-    feature_report_length: u16,
     read_pending: Cell<bool>,
     blocking: Cell<bool>,
-    ol: RefCell<Overlapped>,
-    write_ol: RefCell<Overlapped>,
-    //buffer: Cell<Option<Vec<u8>>>,
+    read_state: RefCell<AsyncState>,
+    write_state: RefCell<AsyncState>,
+    feature_state: RefCell<AsyncState>
+}
+
+struct AsyncState {
+    overlapped: Box<Overlapped>,
+    buffer: Vec<u8>
+}
+
+impl AsyncState {
+
+    fn new(report_size: usize) -> Self {
+        Self {
+            overlapped: Box::new(Default::default()),
+            buffer: vec![0u8; report_size],
+        }
+    }
+
+    fn clear_buffer(&mut self) {
+        self.buffer.fill(0)
+    }
+
+    fn fill_buffer(&mut self, data: &[u8]) {
+        /* Make sure the right number of bytes are passed to WriteFile. Windows
+	   expects the number of bytes which are in the _longest_ report (plus
+	   one for the report number) bytes even if the data is a report
+	   which is shorter than that. Windows gives us this value in
+	   caps.OutputReportByteLength. If a user passes in fewer bytes than this,
+	   use cached temporary buffer which is the proper size. */
+        let data_size = data.len().min(self.buffer.len());
+        self.buffer[..data_size].copy_from_slice(&data[..data_size]);
+        if data_size < self.buffer.len() {
+            self.buffer[data_size..].fill(0);
+        }
+    }
+
+    fn buffer_len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    fn buffer_ptr(&mut self) -> *mut u8 {
+        self.buffer.as_mut_ptr()
+    }
+
 }
 
 //unsafe impl Send for HidDevice {}
@@ -86,56 +124,26 @@ impl Debug for HidDevice {
     }
 }
 
-//impl HidDevice {
-//
-//    fn buffered<R, F>(&self, data: &[u8], min_len: usize, write_func: F) -> R where F: FnOnce(&[u8]) -> R {
-//        if data.len() >= min_len {
-//            write_func(data)
-//        } else {
-//            let mut write_buf = self
-//                .buffer
-//                .take()
-//                .unwrap_or_else(|| vec![0u8; min_len]);
-//            write_buf.resize(min_len, 0);
-//            write_buf[..data.len()].copy_from_slice(data);
-//            write_buf[data.len()..].fill(0);
-//            let r = write_func(&write_buf);
-//            self.buffer.set(Some(write_buf));
-//            r
-//        }
-//    }
-//
-//}
-
 impl HidDeviceBackendBase for HidDevice {
 
     fn write(&self, data: &[u8]) -> HidResult<usize> {
         ensure!(!data.is_empty(), Err(HidError::InvalidZeroSizeData));
-        let mut data = data;
-        let mut buf = Vec::new();
-        let mut overlapped = self.write_ol.borrow_mut();
-
-        /* Make sure the right number of bytes are passed to WriteFile. Windows
-	   expects the number of bytes which are in the _longest_ report (plus
-	   one for the report number) bytes even if the data is a report
-	   which is shorter than that. Windows gives us this value in
-	   caps.OutputReportByteLength. If a user passes in fewer bytes than this,
-	   use cached temporary buffer which is the proper size. */
-        if data.len() < self.output_report_length as usize {
-            buf.resize( self.output_report_length as usize, 0);
-            buf[..data.len()].copy_from_slice(data);
-            buf[data.len()..].fill(0);
-            data = &buf;
-        }
+        let mut state = self.write_state.borrow_mut();
+        state.fill_buffer(data);
 
         let res = unsafe {
-            WriteFile(self.device_handle.as_raw(), data.as_ptr(), data.len() as u32, null_mut(), overlapped.as_raw())
+            WriteFile(
+                self.device_handle.as_raw(),
+                state.buffer_ptr(),
+                state.buffer_len() as u32,
+                null_mut(),
+                state.overlapped.as_raw())
         };
 
         if res != TRUE {
             let err = Win32Error::last();
             ensure!(err == Win32Error::IoPending, Err(err.into()));
-            Ok(overlapped.get_result(&self.device_handle, Some(1000))?)
+            Ok(state.overlapped.get_result(&self.device_handle, Some(1000))?)
         } else {
             Ok(0)
         }
@@ -149,21 +157,22 @@ impl HidDeviceBackendBase for HidDevice {
     fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
         assert!(!buf.is_empty());
         let mut bytes_read = 0;
-        let mut overlapped = self.ol.borrow_mut();
+        //let mut overlapped = self.ol.borrow_mut();
         let mut io_runnig = false;
-        let mut read_buf = vec![0u8; self.input_report_length];
+        let mut state = self.read_state.borrow_mut();
+        //let mut read_buf = vec![0u8; self.input_report_length];
 
         if !self.read_pending.get() {
             self.read_pending.set(true);
-
+            state.clear_buffer();
             let res = unsafe {
-                ResetEvent(overlapped.event_handle());
+                ResetEvent(state.overlapped.event_handle());
                 ReadFile(
                     self.device_handle.as_raw(),
-                    read_buf.as_mut_ptr() as _,
-                    self.input_report_length as u32,
+                    state.buffer_ptr() as _,
+                    state.buffer_len() as u32,
                     &mut bytes_read,
-                    overlapped.as_raw())
+                    state.overlapped.as_raw())
             };
             if res != TRUE {
                 let err = Win32Error::last();
@@ -179,7 +188,7 @@ impl HidDeviceBackendBase for HidDevice {
         }
 
         if io_runnig {
-            let res = overlapped.get_result(&self.device_handle, u32::try_from(timeout).ok());
+            let res = state.overlapped.get_result(&self.device_handle, u32::try_from(timeout).ok());
             bytes_read = match res {
                 Ok(written) => written as u32,
                 //There was no data this time. Return zero bytes available, but leave the Overlapped I/O running.
@@ -198,13 +207,13 @@ impl HidDeviceBackendBase for HidDevice {
 			   number (0x0) on the beginning of the report anyway. To make this
 			   work like the other platforms, and to make it work more like the
 			   HID spec, we'll skip over this byte. */
-            if read_buf[0] == 0x0 {
+            if state.buffer[0] == 0x0 {
                 bytes_read -= 1;
                 copy_len = usize::min(bytes_read as usize, buf.len());
-                buf[..copy_len].copy_from_slice(&read_buf[1..(1 + copy_len)]);
+                buf[..copy_len].copy_from_slice(&state.buffer[1..(1 + copy_len)]);
             } else {
                 copy_len = usize::min(bytes_read as usize, buf.len());
-                buf[..copy_len].copy_from_slice(&read_buf[0..copy_len]);
+                buf[..copy_len].copy_from_slice(&state.buffer[0..copy_len]);
             }
         }
         Ok(copy_len)
@@ -212,23 +221,10 @@ impl HidDeviceBackendBase for HidDevice {
 
     fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
         ensure!(!data.is_empty(), Err(HidError::InvalidZeroSizeData));
+        let mut state = self.feature_state.borrow_mut();
+        state.fill_buffer(data);
 
-        let mut data = data;
-        let mut buf = Vec::new();
-
-        /* Windows expects at least caps.FeatureReportByteLength bytes passed
-	   to HidD_SetFeature(), even if the report is shorter. Any less sent and
-	   the function fails with error ERROR_INVALID_PARAMETER set. Any more
-	   and HidD_SetFeature() silently truncates the data sent in the report
-	   to caps.FeatureReportByteLength. */
-        if data.len() < self.feature_report_length as usize {
-            buf.resize( self.feature_report_length as usize, 0);
-            buf[..data.len()].copy_from_slice(data);
-            buf[data.len()..].fill(0);
-            data = &buf;
-        }
-
-        check_boolean(unsafe { HidD_SetFeature(self.device_handle.as_raw(), data.as_ptr() as _, data.len() as u32) })?;
+        check_boolean(unsafe { HidD_SetFeature(self.device_handle.as_raw(), state.buffer_ptr() as _, state.buffer_len() as u32) })?;
 
         Ok(())
     }
@@ -238,12 +234,12 @@ impl HidDeviceBackendBase for HidDevice {
     /// report data will start in `buf[1]`.
     fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
         const IOCTL_HID_GET_FEATURE: u32 = ((0x0000000b) << 16) | ((0) << 14) | (((100)) << 2) | (2);
-
         ensure!(!buf.is_empty(),  Err(HidError::InvalidZeroSizeData));
-        let mut ol = unsafe { zeroed() };
+        let mut state = self.feature_state.borrow_mut();
         let mut bytes_returned = 0;
 
         let res = unsafe {
+            ResetEvent(state.overlapped.event_handle());
             DeviceIoControl(
                 self.device_handle.as_raw(),
                 IOCTL_HID_GET_FEATURE,
@@ -252,17 +248,14 @@ impl HidDeviceBackendBase for HidDevice {
                 buf.as_mut_ptr() as _,
                 buf.len() as u32,
                 &mut bytes_returned,
-            &mut ol)
+                state.overlapped.as_raw())
         };
         if res != TRUE {
             let err = Win32Error::last();
             ensure!(err == Win32Error::IoPending, Err(err.into()))
         }
 
-        let res = unsafe {
-            GetOverlappedResult(self.device_handle.as_raw(), &mut ol, &mut bytes_returned, TRUE)
-        };
-        ensure!(res == TRUE, Err(HidError::from(WinError::from(Win32Error::last()))));
+        bytes_returned = state.overlapped.get_result(&self.device_handle, None)? as u32;
 
         if buf[0] == 0x0 {
             bytes_returned += 1;
@@ -372,16 +365,11 @@ fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
     let dev = HidDevice {
         device_handle: handle,
         blocking: Cell::new(true),
-        output_report_length: caps.OutputReportByteLength,
-        input_report_length: caps.InputReportByteLength as usize,
-        feature_report_length: caps.FeatureReportByteLength,
-        //feature_buf: null_mut(),
         read_pending: Cell::new(false),
-        //read_buf: null_mut(),
-        ol: Default::default(),
-        write_ol: Default::default(),
+        read_state: RefCell::new(AsyncState::new(caps.InputReportByteLength as usize)),
+        write_state: RefCell::new(AsyncState::new(caps.OutputReportByteLength as usize)),
+        feature_state: RefCell::new(AsyncState::new(caps.FeatureReportByteLength as usize)),
         device_info,
-        //buffer: Cell::new(None),
     };
 
     Ok(dev)
