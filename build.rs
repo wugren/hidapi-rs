@@ -91,6 +91,7 @@ fn compile_linux() {
         (
             "LINUX_SHARED_LIBUSB",
             Box::new(|| {
+                pkg_config::probe_library("libusb-1.0").expect("Unable to find libusb-1.0");
                 pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
                 println!("cargo:rustc-cfg=libusb");
                 println!("cargo:rustc-cfg=hidapi");

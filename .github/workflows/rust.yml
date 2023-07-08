@@ -10,10 +10,54 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  build-linux:
 
     runs-on: ubuntu-latest
 
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    strategy:
+      fail-fast: false # don't give up on the whole matrix if one variant fails
+      matrix:
+        linkage: ["static", "shared"]
+        library: ["hidraw", "libusb"]
+
+    steps:
+    - name: checkout repository and submodules
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Install dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y cmake libudev-dev libumockdev-dev umockdev
+    - name: Build libusb
+      run: |
+        git clone https://github.com/libusb/libusb.git ./etc/libusb/
+        cd ./etc/libusb/
+        ./autogen.sh
+        make
+        sudo make install
+    - name: Build hidapi
+      run: |
+        cd ./etc/hidapi/
+        mkdir ./build/
+        cd ./build/
+        cmake ..
+        make
+        sudo make install
+    - name: List pkgconfig definitions
+      run: grep -RHn ^ /usr/local/lib/pkgconfig
+    - name: Build
+      run: cargo build --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
+    - name: Run tests
+      run: cargo test --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
+
+  build-linux-native:
+    runs-on: ubuntu-latest
+    env:
+      DEBIAN_FRONTEND: noninteractive
     steps:
     - name: checkout repository and submodules
       uses: actions/checkout@v2
@@ -24,6 +68,37 @@ jobs:
         sudo apt-get update -y
         sudo apt-get install -y libudev-dev
     - name: Build
-      run: cargo build --no-default-features --features linux-static-hidraw --verbose
+      run: cargo build --no-default-features --features linux-native --verbose
     - name: Run tests
-      run: cargo test --no-default-features --features linux-static-hidraw --verbose
+      run: cargo test --no-default-features --features linux-native --verbose
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: checkout repository and submodules
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Install rust environment
+      run: |
+        curl.exe --proto "=https" --tlsv1.2 -L -o rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
+        .\rustup-init.exe -y
+    - name: Build
+      run: cargo build --no-default-features --verbose
+    - name: Run tests
+      run: cargo test --no-default-features --verbose
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+    - name: checkout repository and submodules
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+    - name: Install rust environment
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - name: Build
+      run: cargo build --no-default-features --verbose
+    - name: Run tests
+      run: cargo test --no-default-features --verbose
