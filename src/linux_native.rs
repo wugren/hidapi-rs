@@ -591,6 +591,16 @@ impl HidDeviceBackendBase for HidDevice {
             }),
         }
     }
+
+    fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
+        let devnum = fstat(self.fd.as_raw_fd())?.st_rdev;
+        let syspath: PathBuf = format!("/sys/dev/char/{}:{}", major(devnum), minor(devnum)).into();
+
+        let descriptor = HidrawReportDescriptor::from_syspath(&syspath)?;
+        let min_size = buf.len().min(descriptor.0.len());
+        buf[..min_size].copy_from_slice(&descriptor.0[..min_size]);
+        Ok(min_size)
+    }
 }
 
 #[cfg(test)]
