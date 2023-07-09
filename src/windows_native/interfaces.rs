@@ -47,6 +47,7 @@ impl Interface {
         };
         check_config(cr, CR_SUCCESS)?;
         ensure!(size == len as usize, Err(WinError::UnexpectedReturnSize));
+        property.validate();
         Ok(property)
     }
 
