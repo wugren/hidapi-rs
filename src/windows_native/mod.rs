@@ -291,6 +291,10 @@ impl HidDeviceBackendBase for HidDevice {
     fn get_device_info(&self) -> HidResult<DeviceInfo> {
         Ok(self.device_info.clone())
     }
+
+    fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
+        todo!()
+    }
 }
 
 impl HidDeviceBackendWindows for HidDevice {
