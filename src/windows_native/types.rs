@@ -31,7 +31,7 @@ unsafe impl DeviceProperty for GUID {
 
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum InternalBuyType {
+pub enum InternalBusType {
     Unknown,
     Usb,
     Bluetooth,
@@ -40,15 +40,15 @@ pub enum InternalBuyType {
     Spi,
 }
 
-impl From<InternalBuyType> for BusType {
-    fn from(value: InternalBuyType) -> Self {
+impl From<InternalBusType> for BusType {
+    fn from(value: InternalBusType) -> Self {
         match value {
-            InternalBuyType::Unknown => BusType::Unknown,
-            InternalBuyType::Usb => BusType::Usb,
-            InternalBuyType::Bluetooth => BusType::Bluetooth,
-            InternalBuyType::BluetoothLE => BusType::Bluetooth,
-            InternalBuyType::I2c => BusType::I2c,
-            InternalBuyType::Spi => BusType::Spi
+            InternalBusType::Unknown => BusType::Unknown,
+            InternalBusType::Usb => BusType::Usb,
+            InternalBusType::Bluetooth => BusType::Bluetooth,
+            InternalBusType::BluetoothLE => BusType::Bluetooth,
+            InternalBusType::I2c => BusType::I2c,
+            InternalBusType::Spi => BusType::Spi
         }
     }
 }

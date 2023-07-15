@@ -11,7 +11,7 @@ use crate::windows_native::error::WinResult;
 use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
 use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string::{U16Str, U16String, U16StringList};
-use crate::windows_native::types::{Handle, InternalBuyType};
+use crate::windows_native::types::{Handle, InternalBusType};
 
 fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOOLEAN, handle: &Handle) -> WcharString {
     //Return empty string on failure to match the c implementation
@@ -65,25 +65,25 @@ fn get_internal_info(interface_path: &U16Str, dev: &mut DeviceInfo) -> WinResult
             /* USB devices
 		   https://docs.microsoft.com/windows-hardware/drivers/hid/plug-and-play-support
 		   https://docs.microsoft.com/windows-hardware/drivers/install/standard-usb-identifiers */
-            id if id.starts_with_ignore_case("USB") => Some(InternalBuyType::Usb),
+            id if id.starts_with_ignore_case("USB") => Some(InternalBusType::Usb),
             /* Bluetooth devices
 		   https://docs.microsoft.com/windows-hardware/drivers/bluetooth/installing-a-bluetooth-device */
-            id if id.starts_with_ignore_case("BTHENUM") => Some(InternalBuyType::Bluetooth),
-            id if id.starts_with_ignore_case("BTHLEDEVICE") => Some(InternalBuyType::BluetoothLE),
+            id if id.starts_with_ignore_case("BTHENUM") => Some(InternalBusType::Bluetooth),
+            id if id.starts_with_ignore_case("BTHLEDEVICE") => Some(InternalBusType::BluetoothLE),
             /* I2C devices
 		   https://docs.microsoft.com/windows-hardware/drivers/hid/plug-and-play-support-and-power-management */
-            id if id.starts_with_ignore_case("PNP0C50") => Some(InternalBuyType::I2c),
+            id if id.starts_with_ignore_case("PNP0C50") => Some(InternalBusType::I2c),
             /* SPI devices
 		   https://docs.microsoft.com/windows-hardware/drivers/hid/plug-and-play-for-spi */
-            id if id.starts_with_ignore_case("PNP0C51") => Some(InternalBuyType::Spi),
+            id if id.starts_with_ignore_case("PNP0C51") => Some(InternalBusType::Spi),
             _ => None
         })
         .next()
-        .unwrap_or(InternalBuyType::Unknown);
+        .unwrap_or(InternalBusType::Unknown);
     dev.bus_type = bus_type.into();
     match bus_type {
-        InternalBuyType::Usb => get_usb_info(dev, dev_node)?,
-        InternalBuyType::BluetoothLE => get_ble_info(dev, dev_node)?,
+        InternalBusType::Usb => get_usb_info(dev, dev_node)?,
+        InternalBusType::BluetoothLE => get_ble_info(dev, dev_node)?,
         _ => ()
     };
 

@@ -1,4 +1,5 @@
 use std::ffi::CStr;
+use std::fmt::{Debug, Formatter};
 use std::iter::once;
 use std::mem::size_of;
 use std::ops::{Deref, DerefMut};
@@ -104,7 +105,22 @@ impl From<&U16Str> for WcharString {
     }
 }
 
+impl Debug for U16Str {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for c in char::decode_utf16(self.as_slice().iter().copied()) {
+            write!(f, "{}", c.unwrap_or(char::REPLACEMENT_CHARACTER))?;
+        }
+        Ok(())
+    }
+}
+
 pub struct U16String(Vec<u16>);
+
+impl Debug for U16String {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.deref())
+    }
+}
 
 impl Deref for U16String {
     type Target = U16Str;

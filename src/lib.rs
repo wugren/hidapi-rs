@@ -62,8 +62,6 @@ extern crate libc;
 #[cfg(all(feature = "linux-native", target_os = "linux"))]
 extern crate nix;
 
-//#[cfg(target_os = "windows")]
-//extern crate winapi;
 #[cfg(target_os = "windows")]
 use windows_sys::core::GUID;
 
@@ -84,7 +82,7 @@ mod macos;
 mod windows;
 
 #[cfg(feature = "windows-native")]
-#[cfg_attr(docsrs, doc(cfg(fall(feature = "linux-native", target_os = "linux"))))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "windows-native", target_os = "windows"))))]
 mod windows_native;
 
 use libc::wchar_t;
