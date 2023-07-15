@@ -83,7 +83,7 @@ impl AsyncState {
 
     fn new(report_size: usize) -> Self {
         Self {
-            overlapped: Box::new(Default::default()),
+            overlapped: Default::default(),
             buffer: vec![0u8; report_size],
         }
     }
@@ -233,6 +233,7 @@ impl HidDeviceBackendBase for HidDevice {
     /// Upon return, the first byte will still contain the Report ID, and the
     /// report data will start in `buf[1]`.
     fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
+        #[allow(clippy::identity_op, clippy::double_parens)]
         const IOCTL_HID_GET_FEATURE: u32 = ((0x0000000b) << 16) | ((0) << 14) | (((100)) << 2) | (2);
         ensure!(!buf.is_empty(),  Err(HidError::InvalidZeroSizeData));
         let mut state = self.feature_state.borrow_mut();
