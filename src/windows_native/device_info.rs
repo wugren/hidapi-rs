@@ -8,7 +8,7 @@ use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, WcharString};
 use crate::windows_native::dev_node::DevNode;
 use crate::windows_native::error::WinResult;
-use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
+use crate::windows_native::hid::{get_hid_attributes, PreparsedData};
 use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string::{U16Str, U16String, U16StringList};
 use crate::windows_native::types::{Handle, InternalBusType};
@@ -29,7 +29,8 @@ fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOO
 
 pub fn get_device_info(path: &U16Str, handle: &Handle) -> DeviceInfo {
     let attrib = get_hid_attributes(handle);
-    let caps = get_hid_caps(handle)
+    let caps = PreparsedData::load(handle)
+        .and_then(|data| data.get_caps())
         .unwrap_or(unsafe { zeroed() });
     let mut dev = DeviceInfo {
         path: CString::new(path.to_string()).unwrap(),

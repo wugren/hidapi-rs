@@ -26,7 +26,7 @@ use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError,
 use crate::windows_native::dev_node::DevNode;
 use crate::windows_native::device_info::get_device_info;
 use crate::windows_native::error::{check_boolean, Win32Error, WinError, WinResult};
-use crate::windows_native::hid::{get_hid_attributes, get_hid_caps};
+use crate::windows_native::hid::{get_hid_attributes, PreparsedData};
 use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string::{U16Str, U16String};
 use crate::windows_native::types::{Handle, Overlapped};
@@ -365,7 +365,7 @@ fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         .unwrap();
     let handle = open_device(&device_path, true)?;
     assert_ne!(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) }, 0);
-    let caps = get_hid_caps(&handle)?;
+    let caps = PreparsedData::load(&handle)?.get_caps()?;
     let device_info = get_device_info(&device_path, &handle);
     let dev = HidDevice {
         device_handle: handle,

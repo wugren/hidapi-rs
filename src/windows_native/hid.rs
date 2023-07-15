@@ -24,14 +24,30 @@ pub fn get_hid_attributes(handle: &Handle) -> HIDD_ATTRIBUTES {
     }
 }
 
-pub fn get_hid_caps(handle: &Handle) -> WinResult<HIDP_CAPS> {
-    unsafe {
-        let mut caps = zeroed();
-        let mut pp_data = 0;
-        check_boolean(HidD_GetPreparsedData(handle.as_raw(), &mut pp_data))?;
-        let r = HidP_GetCaps(pp_data, &mut caps);
-        HidD_FreePreparsedData(pp_data);
-        ensure!(r == HIDP_STATUS_SUCCESS, Err(WinError::InvalidPreparsedData));
-        Ok(caps)
+#[repr(transparent)]
+pub struct PreparsedData(isize);
+
+impl Drop for PreparsedData {
+    fn drop(&mut self) {
+        unsafe { HidD_FreePreparsedData(self.0); }
     }
+}
+
+impl PreparsedData {
+
+    pub fn load(handle: &Handle) -> WinResult<Self> {
+        let mut pp_data = 0;
+        check_boolean(unsafe { HidD_GetPreparsedData(handle.as_raw(), &mut pp_data) })?;
+        Ok(Self(pp_data))
+    }
+
+    pub fn get_caps(&self) -> WinResult<HIDP_CAPS> {
+        unsafe {
+            let mut caps = zeroed();
+            let r = HidP_GetCaps(self.0, &mut caps);
+            ensure!(r == HIDP_STATUS_SUCCESS, Err(WinError::InvalidPreparsedData));
+            Ok(caps)
+        }
+    }
+
 }
