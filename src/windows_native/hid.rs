@@ -1,3 +1,4 @@
+use std::ffi::c_void;
 use std::mem::{size_of, zeroed};
 use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetPreparsedData, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
@@ -38,7 +39,13 @@ impl PreparsedData {
     pub fn load(handle: &Handle) -> WinResult<Self> {
         let mut pp_data = 0;
         check_boolean(unsafe { HidD_GetPreparsedData(handle.as_raw(), &mut pp_data) })?;
+        ensure!(pp_data != 0, Err(WinError::InvalidPreparsedData));
         Ok(Self(pp_data))
+    }
+
+    #[allow(dead_code)]
+    pub fn as_ptr(&self) -> *const c_void {
+        self.0 as _
     }
 
     pub fn get_caps(&self) -> WinResult<HIDP_CAPS> {

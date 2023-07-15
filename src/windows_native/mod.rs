@@ -294,7 +294,7 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn get_report_descriptor(&self, _buf: &mut [u8]) -> HidResult<usize> {
-        todo!()
+        Err(HidError::HidApiError { message: "get_report_descriptor is not supported on this backend".to_string() })
     }
 }
 
