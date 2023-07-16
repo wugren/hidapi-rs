@@ -7,6 +7,7 @@ mod hid;
 mod device_info;
 mod string;
 mod dev_node;
+mod descriptor;
 
 use std::{
     ffi::CStr,
@@ -293,8 +294,8 @@ impl HidDeviceBackendBase for HidDevice {
         Ok(self.device_info.clone())
     }
 
-    fn get_report_descriptor(&self, _buf: &mut [u8]) -> HidResult<usize> {
-        Err(HidError::HidApiError { message: "get_report_descriptor is not supported on this backend".to_string() })
+    fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
+        Ok(descriptor::get_descriptor(&PreparsedData::load(&self.device_handle)?, buf)?)
     }
 }
 
