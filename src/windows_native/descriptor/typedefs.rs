@@ -1,18 +1,6 @@
 
 pub type Usage = u16;
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-#[repr(u16)]
-pub enum ReportType {
-    Input = 0x0,
-    Output = 0x1,
-    Feature = 0x2
-}
-impl ReportType {
-    pub const fn values() -> impl IntoIterator<Item=Self> {
-        [Self::Input, Self::Output, Self::Feature]
-    }
-}
 
 #[derive(Copy, Clone)]
 #[repr(C)]
@@ -23,7 +11,13 @@ pub struct LinkCollectionNode {
     pub number_of_children: u16,
     pub next_sibling: u16,
     pub first_child: u16,
-    pub type_alias_reserved: u32
+    pub bits: u32
+}
+
+impl LinkCollectionNode {
+    pub fn is_alias(&self) -> bool {
+        self.bits & 1u32 << 23 != 0
+    }
 }
 
 //Size checked
