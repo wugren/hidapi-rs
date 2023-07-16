@@ -123,6 +123,12 @@ pub struct Caps {
     pub units_exp: u32
 }
 
+impl Caps {
+    pub fn is_alias(&self) -> bool {
+        self.flags & (1 << 2) != 0
+    }
+}
+
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct HidpPreparsedData {

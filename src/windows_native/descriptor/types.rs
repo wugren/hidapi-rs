@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::cell::RefCell;
+use std::cell::{OnceCell};
 use std::rc::Rc;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -49,7 +49,7 @@ pub enum Items {
     LocalDelimiter          = 0xA8  /* 1010 10 nn */
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[repr(u16)]
 pub enum MainItems {
     Input = ReportType::Input as u16,
@@ -60,6 +60,29 @@ pub enum MainItems {
     DelimiterOpen,
     DelimiterUsage,
     DelimiterClose,
+}
+
+impl From<ReportType> for MainItems {
+    fn from(value: ReportType) -> Self {
+        match value {
+            ReportType::Input => Self::Input,
+            ReportType::Output => Self::Output,
+            ReportType::Feature => Self::Feature
+        }
+    }
+}
+
+impl TryFrom<MainItems> for ReportType {
+    type Error = ();
+
+    fn try_from(value: MainItems) -> Result<Self, Self::Error> {
+        match value {
+            MainItems::Input => Ok(Self::Input),
+            MainItems::Output => Ok(Self::Output),
+            MainItems::Feature => Ok(Self::Feature),
+            _ => Err(())
+        }
+    }
 }
 
 #[derive(Default, Copy, Clone, Eq, PartialEq)]
@@ -80,15 +103,15 @@ pub struct MainItemNode {
     pub first_bit: u16,
     pub last_bit: u16,
     pub node_type: ItemNodeType,
-    pub caps_index: u16,
+    pub caps_index: i32,
     pub collection_index: usize,
     pub main_item_type: MainItems,
     pub report_id: u8,
-    pub next: RefCell<Option<Rc<MainItemNode>>>
+    pub next: OnceCell<Rc<MainItemNode>>
 }
 
 impl MainItemNode {
-    pub fn new(first_bit: u16, last_bit: u16, node_type: ItemNodeType, caps_index: u16, collection_index: usize, main_item_type: MainItems, report_id: u8) -> Self {
+    pub fn new(first_bit: u16, last_bit: u16, node_type: ItemNodeType, caps_index: i32, collection_index: usize, main_item_type: MainItems, report_id: u8) -> Self {
         Self { first_bit, last_bit, node_type, caps_index, collection_index, main_item_type, report_id, next: Default::default() }
     }
 }

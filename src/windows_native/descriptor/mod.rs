@@ -35,9 +35,9 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
         // Create lookup tables for the bit range of each report per collection (position of first bit and last bit in each collection)
         // coll_bit_range[COLLECTION_INDEX][REPORT_ID][INPUT/OUTPUT/FEATURE]
         // ****************************************************************************************************************************
-        let mut coll_bit_range: HashMap<(usize, u16, ReportType), BitRange> = HashMap::new();
+        let mut coll_bit_range: HashMap<(usize, u8, ReportType), BitRange> = HashMap::new();
         for collection_node_idx in 0..link_collection_nodes.len() {
-            for reportid_idx in 0..256 {
+            for reportid_idx in 0..=255 {
                 for rt_idx in ReportType::values() {
                     coll_bit_range.insert((collection_node_idx, reportid_idx, rt_idx), BitRange::default());
                 }
@@ -50,7 +50,7 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
                 let caps = (*header).caps[caps_idx as usize];
                 let first_bit = (caps.byte_position - 1) * 8 + caps.bit_position as u16;
                 let last_bit = first_bit + caps.report_size * caps.report_count - 1;
-                let range = coll_bit_range.get_mut(&(caps.link_collection as usize, caps.report_id as u16, rt_idx)).unwrap();
+                let range = coll_bit_range.get_mut(&(caps.link_collection as usize, caps.report_id, rt_idx)).unwrap();
                 range.first_bit = range.first_bit.into_iter().chain(once(first_bit)).min();
                 range.last_bit = range.last_bit.into_iter().chain(once(last_bit)).max();
             }
@@ -103,7 +103,7 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
                 if coll_levels[collection_node_idx] == actual_coll_level {
                     let mut child_idx = link_collection_nodes[collection_node_idx].first_child as usize;
                     while child_idx != 0 {
-                        for reportid_idx in 0..256 {
+                        for reportid_idx in 0..=255 {
                             for rt_idx in ReportType::values() {
                                 let child = coll_bit_range
                                     .get(&(child_idx, reportid_idx, rt_idx))
@@ -153,7 +153,7 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
                     if coll_number_of_direct_childs[collection_node_idx] > 1 {
                         // Sort child collections indices by bit positions
                         for rt_idx in ReportType::values() {
-                            for report_idx in 0..256 {
+                            for report_idx in 0..=255 {
                                 for child_idx in 1..coll_number_of_direct_childs[collection_node_idx] {
                                     // since the coll_bit_range array is not sorted, we need to reference the collection index in
                                     // our sorted coll_child_order array, and look up the corresponding bit ranges for comparing values to sort
@@ -197,6 +197,7 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
         let mut main_item_list: Option<Rc<MainItemNode>> = None;
         // Lookup table to find the Collection items in the list by index
         let mut coll_begin_lookup = HashMap::new();
+        let mut coll_end_lookup = HashMap::new();
         {
             let mut coll_last_written_child  = vec![-1i32; link_collection_nodes.len()];
 
@@ -276,7 +277,7 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
                     }
                 } else {
                     actual_coll_level -= 1;
-                    coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                    coll_end_lookup.insert(collection_node_idx, append_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::CollectionEnd, 0),
                         &mut main_item_list));
                     collection_node_idx = link_collection_nodes[collection_node_idx].parent as usize;
@@ -290,11 +291,120 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
         // ****************************************************************
         for rt_idx in ReportType::values() {
             // Add all value caps to node list
-            let first_delimiter_node = None;
-            let delimiter_close_node = None;
+            let mut first_delimiter_node = None;
+            let mut delimiter_close_node = None;
             let caps_info = (*header).caps_info[rt_idx as usize];
             for caps_idx in caps_info.first_cap..caps_info.last_cap {
+                let caps = (*header).caps[caps_idx as usize];
+                let mut coll_begin = coll_begin_lookup[&(caps.link_collection as usize)].clone();
+                let first_bit = (caps.byte_position - 1) * 8 + caps.bit_position as u16;
+                let last_bit = first_bit + caps.report_size * caps.report_count - 1;
 
+                for child_idx in 0..coll_number_of_direct_childs[caps.link_collection as usize] {
+                    // Determine in which section before/between/after child collection the item should be inserted
+                    if first_bit < coll_bit_range[&(coll_child_order[&(caps.link_collection as usize, child_idx)], caps.report_id, rt_idx)].first_bit.unwrap_or(0) {
+                        // Note, that the default value for undefined coll_bit_range is -1, which can't be greater than the bit position
+                        break;
+                    }
+                    coll_begin = coll_end_lookup[&coll_child_order[&(caps.link_collection as usize, child_idx)]].clone();
+                }
+                let mut list_node = search_list(first_bit as i32, rt_idx.into(), caps.report_id, coll_begin.clone());
+
+                // In a HID Report Descriptor, the first usage declared is the most preferred usage for the control.
+                // While the order in the WIN32 capabiliy strutures is the opposite:
+                // Here the preferred usage is the last aliased usage in the sequence.
+
+                if caps.is_alias() && first_delimiter_node.is_none() {
+                    // Alliased Usage (First node in pp_data->caps -> Last entry in report descriptor output)
+                    first_delimiter_node = Some(list_node.clone());
+                    append_main_item_node(
+                        MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
+                        &mut Some(list_node.clone())
+                    );
+                    append_main_item_node(
+                        MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterClose, caps.report_id),
+                        &mut Some(list_node.clone())
+                    );
+                    delimiter_close_node = Some(list_node.clone());
+                } else if caps.is_alias() && first_delimiter_node.is_some() {
+                    append_main_item_node(
+                        MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
+                        &mut Some(list_node.clone())
+                    );
+                } else if !caps.is_alias() && first_delimiter_node.is_some() {
+                    // Alliased Collection (Last node in pp_data->caps -> First entry in report descriptor output)
+                    append_main_item_node(
+                        MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
+                        &mut Some(list_node.clone())
+                    );
+                    append_main_item_node(
+                        MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterOpen, caps.report_id),
+                        &mut Some(list_node.clone())
+                    );
+                    first_delimiter_node = None;
+                    list_node = delimiter_close_node.take().unwrap();
+                }
+                if !caps.is_alias() {
+                    append_main_item_node(
+                        MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, rt_idx.into(), caps.report_id),
+                        &mut Some(list_node.clone())
+                    );
+                }
+            }
+        }
+
+        // ***********************************************************
+        // Add const main items for padding to main_item_list
+        // -To fill all bit gaps
+        // -At each report end for 8bit padding
+        //  Note that information about the padding at the report end,
+        //  is not stored in the preparsed data, but in practice all
+        //  report descriptors seem to have it, as assumed here.
+        // ***********************************************************
+        {
+            let mut last_bit_position: HashMap<(MainItems, u8), i32> = HashMap::new();
+            let mut last_report_item_lookup: HashMap<(MainItems, u8), Rc<MainItemNode>> = HashMap::new();
+
+            let mut list = main_item_list.unwrap();
+            while let Some(next) = list.next.get() {
+                if let Ok(_) = ReportType::try_from(list.main_item_type) {
+                    let lbp = last_bit_position
+                        .get(&(list.main_item_type, list.report_id))
+                        .cloned()
+                        .unwrap_or(-1);
+                    let lrip = last_report_item_lookup
+                        .get(&(list.main_item_type, list.report_id))
+                        .cloned();
+                    if lbp + 1 != list.first_bit as i32 && lrip.as_ref()
+                        .is_some_and(|i| i.first_bit != list.first_bit) {
+                        let list_node = search_list(lbp, list.main_item_type, list.report_id, lrip.unwrap());
+                        append_main_item_node(
+                            MainItemNode::new((lbp + 1) as u16, list.first_bit - 1, ItemNodeType::Padding, -1, 0, list.main_item_type, list.report_id),
+                            &mut Some(list_node)
+                        );
+                    }
+                    last_bit_position.insert((list.main_item_type, list.report_id), list.last_bit as i32);
+                    last_report_item_lookup.insert((list.main_item_type, list.report_id), list.clone());
+                }
+                list = next.clone();
+            }
+            for rt_idx in ReportType::values() {
+                for report_idx in 0..=255 {
+                    if let Some(lbp) = last_bit_position.get(&(rt_idx.into(), report_idx)) {
+                        let padding = 8 - ((*lbp + 1) % 8);
+                        if padding < 8 {
+                            // Insert padding item after item referenced in last_report_item_lookup
+                            let mut lrip = last_report_item_lookup.get_mut(&(rt_idx.into(), report_idx)).cloned();
+                            append_main_item_node(
+                                MainItemNode::new((lbp + 1) as u16, (lbp + padding) as u16, ItemNodeType::Padding, -1, 0, rt_idx.into(), report_idx),
+                                &mut lrip
+                            );
+                            if let Some(lrip) = lrip {
+                                last_report_item_lookup.insert((rt_idx.into(), report_idx), lrip);
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -304,18 +414,36 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
     Ok(0)
 }
 
-fn append_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) -> Rc<MainItemNode> {
-    let rc = Rc::new(node);
-    append(rc.clone(), list);
-    rc
-}
-
-fn append(rc: Rc<MainItemNode>, list: &mut Option<Rc<MainItemNode>>) {
-    match list {
-        None => *list = Some(rc),
-        Some(current) => {
-            let mut next = current.next.borrow_mut();
-            append(rc, next.deref_mut());
+fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, mut list: Rc<MainItemNode>) -> Rc<MainItemNode> {
+    loop {
+        let next = list.next.get().unwrap().clone();
+        if next.main_item_type != MainItems::Collection &&
+            next.main_item_type != MainItems::CollectionEnd &&
+            !(next.last_bit as i32 >= search_bit && next.report_id == report_id && next.main_item_type == main_item_type) {
+            list = next;
+        } else {
+            break;
         }
     }
+    list.clone()
+}
+
+fn append_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) -> Rc<MainItemNode> {
+    let rc = Rc::new(node);
+    match list {
+        None => *list = Some(rc.clone()),
+        Some(ref current) => {
+            let mut current = current;
+            loop {
+                match current.next.get() {
+                    None => {
+                        current.next.set(rc.clone()).unwrap();
+                        break;
+                    },
+                    Some(next) => current = next
+                }
+            }
+        }
+    }
+    rc
 }
