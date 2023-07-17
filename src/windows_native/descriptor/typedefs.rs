@@ -73,14 +73,14 @@ pub struct NotButton {
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub union MaybeButton {
-    button: Button,
-    not_button: NotButton
+    pub button: Button,
+    pub not_button: NotButton
 }
 
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Range {
-    pub usage_mix: Usage,
+    pub usage_min: Usage,
     pub usage_max: Usage,
     pub string_min: u16,
     pub string_max: u16,
@@ -106,8 +106,8 @@ pub struct NotRange {
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub union MaybeRange {
-    range: Range,
-    not_range: NotRange
+    pub range: Range,
+    pub not_range: NotRange
 }
 
 
@@ -137,11 +137,20 @@ pub struct Caps {
 }
 
 impl Caps {
+    pub fn is_button_cap(&self) -> bool {
+        self.flags & (1 << 2) != 0
+    }
+    pub fn is_range(&self) -> bool {
+        self.flags & (1 << 4) != 0
+    }
     pub fn is_alias(&self) -> bool {
         self.flags & (1 << 5) != 0
     }
-    pub fn is_button_cap(&self) -> bool {
-        self.flags & (1 << 2) != 0
+    pub fn is_string_range(&self) -> bool {
+        self.flags & (1 << 6) != 0
+    }
+    pub fn is_desginator_range(&self) -> bool {
+        self.flags & (1 << 7) != 0
     }
 }
 

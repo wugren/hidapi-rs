@@ -6,7 +6,6 @@ mod tests;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::iter::once;
-use std::ptr::addr_of;
 use std::rc::Rc;
 use std::slice;
 use crate::ensure;
@@ -16,20 +15,14 @@ use crate::windows_native::error::{WinError, WinResult};
 use crate::windows_native::hid::PreparsedData;
 
 
-
 const INVALID_DATA: WinResult<Vec<u8>> = Err(WinError::InvalidPreparsedData);
 
 pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
     unsafe {
         let header: *const HidpPreparsedData = pp_data.as_ptr() as _;
+        let caps_ptr: *const Caps = header.offset(1) as _;
         // Check if MagicKey is correct, to ensure that pp_data points to an valid preparse data structure
         ensure!(&(*header).magic_key == b"HidP KDR", INVALID_DATA);
-        // Set pointer to the first node of link_collection_nodes
-        let link_collection_nodes = {
-            let ptr: *const LinkCollectionNode = ((addr_of!((*header).caps_info[0]) as *const c_void).offset((*header).first_byte_of_link_collection_array as isize)) as _;
-            let len = (*header).number_link_collection_nodes as usize;
-            slice::from_raw_parts(ptr, len)
-        };
 
         let caps_list = {
             let caps_len = ReportType::values()
@@ -37,8 +30,17 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                 .map(|r| (*header).caps_info[r as usize].last_cap)
                 .max()
                 .unwrap() as usize;
-            slice::from_raw_parts(header.offset(1) as *const Caps, caps_len)
+            slice::from_raw_parts(caps_ptr, caps_len)
         };
+
+        // Set pointer to the first node of link_collection_nodes
+        let link_collection_nodes = {
+            let ptr: *const LinkCollectionNode = ((caps_ptr as *const c_void).offset((*header).first_byte_of_link_collection_array as isize)) as _;
+            let len = (*header).number_link_collection_nodes as usize;
+            slice::from_raw_parts(ptr, len)
+        };
+
+
 
         // ****************************************************************************************************************************
         // Create lookup tables for the bit range of each report per collection (position of first bit and last bit in each collection)
@@ -478,9 +480,167 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                     inhibit_write_of_usage = true;
                 },
                 _ if current.node_type == ItemNodeType::Padding => {
+                    // Padding
+                    // The preparsed data doesn't contain any information about padding. Therefore all undefined gaps
+                    // in the reports are filled with the same style of constant padding.
 
+                    // Write "Report Size" with number of padding bits
+                    writer.write(Items::GlobalReportSize, current.last_bit - current.first_bit + 1)?;
+
+                    // Write "Report Count" for padding always as 1
+                    writer.write(Items::GlobalReportCount, 1)?;
+
+                    if rt_idx == MainItems::Input {
+                        // Write "Input" main item - We know it's Constant - We can only guess the other bits, but they don't matter in case of const
+                        writer.write(Items::MainInput, 0x03)?; // Const / Abs
+                    } else if rt_idx == MainItems::Output {
+                        // Write "Output" main item - We know it's Constant - We can only guess the other bits, but they don't matter in case of const
+                        writer.write(Items::MainOutput, 0x03)?; // Const / Abs
+                    } else if rt_idx == MainItems::Feature {
+                        // Write "Feature" main item - We know it's Constant - We can only guess the other bits, but they don't matter in case of const
+                        writer.write(Items::MainFeature, 0x03)?; // Const / Abs
+                    }
+                    report_count = 0;
                 },
                 _ if caps_list[caps_idx as usize].is_button_cap() => {
+                    let caps = caps_list[caps_idx as usize];
+                    // Button
+                    // (The preparsed data contain different data for 1 bit Button caps, than for parametric Value caps)
+
+                    if last_report_id != caps.report_id {
+                        // Write "Report ID" if changed
+                        last_report_id = caps.report_id;
+                        writer.write(Items::GlobalReportId, last_report_id)?;
+                    }
+
+                    // Write "Usage Page" when changed
+                    if caps.usage_page != last_usage_page {
+                        last_usage_page = caps.usage_page;
+                        writer.write(Items::GlobalUsagePage, last_usage_page)?;
+                    }
+
+                    // Write only local report items for each cap, if ReportCount > 1
+                    if caps.is_range() {
+                        report_count += caps.maybe_range.range.data_index_max - caps.maybe_range.range.data_index_min;
+                    }
+
+                    if inhibit_write_of_usage {
+                        // Inhibit only once after Delimiter - Reset flag
+                        inhibit_write_of_usage = false;
+                    } else {
+                        if caps.is_range() {
+                            // Write range from "Usage Minimum" to "Usage Maximum"
+                            writer.write(Items::LocalUsageMinimum, caps.maybe_range.range.usage_min)?;
+                            writer.write(Items::LocalUsageMaximum, caps.maybe_range.range.usage_max)?;
+                        } else {
+                            // Write single "Usage"
+                            writer.write(Items::LocalUsage, caps.maybe_range.not_range.usage)?;
+                        }
+                    }
+
+                    if caps.is_desginator_range() {
+                        // Write physical descriptor indices range from "Designator Minimum" to "Designator Maximum"
+                        writer.write(Items::LocalDesignatorMinimum, caps.maybe_range.range.designator_min)?;
+                        writer.write(Items::LocalDesignatorMaximum, caps.maybe_range.range.designator_max)?;
+                    } else if caps.maybe_range.not_range.designator_index != 0 {
+                        // Designator set 0 is a special descriptor set (of the HID Physical Descriptor),
+                        // that specifies the number of additional descriptor sets.
+                        // Therefore Designator Index 0 can never be a useful reference for a control and we can inhibit it.
+                        // Write single "Designator Index"
+                        writer.write(Items::LocalDesignatorIndex, caps.maybe_range.not_range.designator_index)?;
+                    }
+
+                    if caps.is_string_range() {
+                        // Write range of indices of the USB string descriptor, from "String Minimum" to "String Maximum"
+                        writer.write(Items::LocalStringMinimum, caps.maybe_range.range.string_min)?;
+                        writer.write(Items::LocalStringMaximum, caps.maybe_range.range.string_max)?;
+                    } else if caps.maybe_range.not_range.string_index != 0 {
+                        // String Index 0 is a special entry of the USB string descriptor, that contains a list of supported languages,
+                        // therefore Designator Index 0 can never be a useful reference for a control and we can inhibit it.
+                        // Write single "String Index"
+                        writer.write(Items::LocalString, caps.maybe_range.not_range.string_index)?;
+                    }
+
+                    let next = current.next.get();
+                    if next.as_ref().is_some_and(|next|
+                        next.main_item_type == rt_idx &&
+                        next.node_type == ItemNodeType::Cap &&
+                        !caps.is_range() && // This node in list is no array
+                        !caps_list[next.caps_index as usize].is_range() && // Next node in list is no array
+                        caps_list[next.caps_index as usize].is_button_cap() &&
+                        caps_list[next.caps_index as usize].usage_page == caps.usage_page &&
+                        caps_list[next.caps_index as usize].report_id == caps.report_id &&
+                        caps_list[next.caps_index as usize].bit_field == caps.bit_field ){
+
+                        if next.unwrap().first_bit != current.first_bit {
+                            // In case of IsMultipleItemsForArray for multiple dedicated usages for a multi-button array, the report count should be incremented
+
+                            // Skip global items until any of them changes, than use ReportCount item to write the count of identical report fields
+                            report_count += 1;
+                        }
+                    } else {
+                        if caps.maybe_button.button.logical_min == 0 &&
+                            caps.maybe_button.button.logical_max == 0 {
+                            // While a HID report descriptor must always contain LogicalMinimum and LogicalMaximum,
+                            // the preparsed data contain both fields set to zero, for the case of simple buttons
+                            // Write "Logical Minimum" set to 0 and "Logical Maximum" set to 1
+                            writer.write(Items::GlobalLogicalMinimum, 0)?;
+                            writer.write(Items::GlobalLogicalMaximum, 1)?;
+                        } else {
+                            // Write logical range from "Logical Minimum" to "Logical Maximum"
+                            writer.write(Items::GlobalLogicalMinimum, caps.maybe_button.button.logical_min)?;
+                            writer.write(Items::GlobalLogicalMaximum, caps.maybe_button.button.logical_max)?;
+                        }
+
+                        // Write "Report Size"
+                        writer.write(Items::GlobalReportSize, caps.report_size)?;
+
+                        // Write "Report Count"
+                        if !caps.is_range() {
+                            // Variable bit field with one bit per button
+                            // In case of multiple usages with the same items, only "Usage" is written per cap, and "Report Count" is incremented
+                            writer.write(Items::GlobalReportCount, caps.report_count + report_count)?;
+                        } else {
+                            // Button array of "Report Size" x "Report Count
+                            writer.write(Items::GlobalReportCount, caps.report_count)?;
+                        }
+
+                        // Buttons have only 1 bit and therefore no physical limits/units -> Set to undefined state
+                        if last_physical_min != 0 {
+                            // Write "Physical Minimum", but only if changed
+                            last_physical_min = 0;
+                            writer.write(Items::GlobalPhysicalMinimum, last_physical_min)?;
+                        }
+                        if last_physical_max != 0 {
+                            // Write "Physical Maximum", but only if changed
+                            last_physical_max = 0;
+                            writer.write(Items::GlobalPhysicalMaximum, last_physical_max)?;
+                        }
+                        if last_unit_exponent != 0 {
+                            // Write "Unit Exponent", but only if changed
+                            last_unit_exponent = 0;
+                            writer.write(Items::GlobalUnitExponent, last_unit_exponent)?;
+                        }
+                        if last_unit != 0 {
+                            // Write "Unit",but only if changed
+                            last_unit = 0;
+                            writer.write(Items::GlobalUnit, last_unit)?;
+                        }
+
+                        // Write "Input" main item
+                        if rt_idx == MainItems::Input {
+                            writer.write(Items::MainInput, caps.bit_field)?;
+                        }
+                        // Write "Output" main item
+                        else if rt_idx == MainItems::Output {
+                            writer.write(Items::MainOutput, caps.bit_field)?;
+                        }
+                        // Write "Feature" main item
+                        else if rt_idx == MainItems::Feature {
+                            writer.write(Items::MainFeature, caps.bit_field)?;
+                        }
+                        report_count = 0;
+                    }
 
                 }
                 _ => {
@@ -490,9 +650,6 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
 
             main_item_list = current.next.get();
         }
-
-        // TODO Implement the rest
-        // https://github.com/libusb/hidapi/blob/d0856c05cecbb1522c24fd2f1ed1e144b001f349/windows/hidapi_descriptor_reconstruct.c#L199
 
         Ok(writer.finish())
     }
@@ -523,7 +680,6 @@ fn insert_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>
 }
 
 fn append_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) -> Rc<MainItemNode> {
-    println!("{:?}", node);
     let rc = Rc::new(node);
     match list {
         None => *list = Some(rc.clone()),

@@ -147,4 +147,10 @@ impl<T: Clone> CloneCell<T> {
         self.0.set(t.clone());
         t
     }
+    //pub fn is_some(&self) -> bool {
+    //    let t = self.0.take();
+    //    let r = t.is_some();
+    //    self.0.set(t);
+    //    r
+    //}
 }
