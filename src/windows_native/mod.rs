@@ -295,7 +295,10 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
-        Ok(descriptor::get_descriptor(&PreparsedData::load(&self.device_handle)?, buf)?)
+        let desc = descriptor::get_descriptor(&PreparsedData::load(&self.device_handle)?)?;
+        let size = buf.len().min(desc.len());
+        buf[..size].copy_from_slice(&desc[..size]);
+        Ok(size)
     }
 }
 

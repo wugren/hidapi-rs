@@ -10,16 +10,15 @@ use std::rc::Rc;
 use std::slice;
 use crate::ensure;
 use crate::windows_native::descriptor::typedefs::{HidpPreparsedData, LinkCollectionNode};
-use crate::windows_native::descriptor::types::{BitRange, ItemNodeType, MainItemNode, MainItems, ReportType};
+use crate::windows_native::descriptor::types::{BitRange, ItemNodeType, Items, MainItemNode, MainItems, ReportType};
 use crate::windows_native::error::{WinError, WinResult};
 use crate::windows_native::hid::PreparsedData;
 
 
 
-const INVALID_DATA: WinResult<usize> = Err(WinError::InvalidPreparsedData);
+const INVALID_DATA: WinResult<Vec<u8>> = Err(WinError::InvalidPreparsedData);
 
-pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usize> {
-    //let mut out = buf;
+pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
     unsafe {
         let header: *const HidpPreparsedData = pp_data.as_ptr() as _;
         // Check if MagicKey is correct, to ensure that pp_data points to an valid preparse data structure
@@ -365,7 +364,7 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
             let mut last_bit_position: HashMap<(MainItems, u8), i32> = HashMap::new();
             let mut last_report_item_lookup: HashMap<(MainItems, u8), Rc<MainItemNode>> = HashMap::new();
 
-            let mut list = main_item_list.unwrap();
+            let mut list = main_item_list.clone().unwrap();
             while let Some(next) = list.next.get() {
                 if let Ok(_) = ReportType::try_from(list.main_item_type) {
                     let lbp = last_bit_position
@@ -408,10 +407,31 @@ pub fn get_descriptor(pp_data: &PreparsedData, buf: &mut [u8]) -> WinResult<usiz
             }
         }
 
+        // ***********************************
+        // Encode the report descriptor output
+        // ***********************************
+
+        let mut writer = DescriptorWriter::default();
+
+        let mut last_report_id = 0;
+        let mut last_usage_page = 0;
+        let mut last_physical_min = 0;// If both, Physical Minimum and Physical Maximum are 0, the logical limits should be taken as physical limits according USB HID spec 1.11 chapter 6.2.2.7
+        let mut last_physical_max = 0;
+        let mut last_unit_exponent = 0; // If Unit Exponent is Undefined it should be considered as 0 according USB HID spec 1.11 chapter 6.2.2.7
+        let mut last_unit = 0; // If the first nibble is 7, or second nibble of Unit is 0, the unit is None according USB HID spec 1.11 chapter 6.2.2.7
+        let mut inhibit_write_of_usage = false; // Needed in case of delimited usage print, before the normal collection or cap
+        let mut report_count = 0;
+
+        while let Some(current) = main_item_list {
+
+            main_item_list = current.next.get().cloned();
+        }
+
         // TODO Implement the rest
         // https://github.com/libusb/hidapi/blob/d0856c05cecbb1522c24fd2f1ed1e144b001f349/windows/hidapi_descriptor_reconstruct.c#L199
+
+        Ok(writer.finish())
     }
-    Ok(0)
 }
 
 fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, mut list: Rc<MainItemNode>) -> Rc<MainItemNode> {
@@ -446,4 +466,54 @@ fn append_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>
         }
     }
     rc
+}
+
+#[derive(Default)]
+struct DescriptorWriter(Vec<u8>);
+
+impl DescriptorWriter {
+
+    // Writes a short report descriptor item according USB HID spec 1.11 chapter 6.2.2.2
+    fn write(&mut self, item: Items, data: impl Into<i64>) -> WinResult<()> {
+        let data = data.into();
+        match item {
+            Items::MainCollectionEnd => {
+                self.0.push(item as u8);
+            },
+            Items::GlobalLogicalMinimum | Items::GlobalLogicalMaximum | Items::GlobalPhysicalMinimum | Items::GlobalPhysicalMaximum => {
+                if let Ok(data) = i8::try_from(data) {
+                    self.0.push((item as u8) + 0x01);
+                    self.0.extend(data.to_le_bytes())
+                } else if let Ok(data) = i16::try_from(data) {
+                    self.0.push((item as u8) + 0x02);
+                    self.0.extend(data.to_le_bytes())
+                } else if let Ok(data) = i32::try_from(data) {
+                    self.0.push((item as u8) + 0x03);
+                    self.0.extend(data.to_le_bytes())
+                } else {
+                    return Err(WinError::InvalidPreparsedData)
+                }
+            },
+            _=> {
+                if let Ok(data) = u8::try_from(data) {
+                    self.0.push((item as u8) + 0x01);
+                    self.0.extend(data.to_le_bytes())
+                } else if let Ok(data) = u16::try_from(data) {
+                    self.0.push((item as u8) + 0x02);
+                    self.0.extend(data.to_le_bytes())
+                } else if let Ok(data) = u32::try_from(data) {
+                    self.0.push((item as u8) + 0x03);
+                    self.0.extend(data.to_le_bytes())
+                } else {
+                    return Err(WinError::InvalidPreparsedData)
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn finish(self) -> Vec<u8> {
+        self.0
+    }
+
 }
