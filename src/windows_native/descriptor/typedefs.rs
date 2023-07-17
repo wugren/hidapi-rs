@@ -72,9 +72,9 @@ pub struct NotButton {
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub union MaybeButton {
-    pub button: Button,
-    pub not_button: NotButton
+union MaybeButton {
+    button: Button,
+    not_button: NotButton
 }
 
 #[derive(Copy, Clone)]
@@ -105,9 +105,9 @@ pub struct NotRange {
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-pub union MaybeRange {
-    pub range: Range,
-    pub not_range: NotRange
+union MaybeRange {
+    range: Range,
+    not_range: NotRange
 }
 
 
@@ -130,8 +130,8 @@ pub struct Caps {
     pub flags: u8,
     _reserved: [u8; 3],
     pub unknown_tokens: [UnknownToken; 4],
-    pub maybe_range: MaybeRange,
-    pub maybe_button: MaybeButton,
+    maybe_range: MaybeRange,
+    maybe_button: MaybeButton,
     pub units: u32,
     pub units_exp: u32
 }
@@ -152,6 +152,27 @@ impl Caps {
     pub fn is_desginator_range(&self) -> bool {
         self.flags & (1 << 7) != 0
     }
+
+    pub fn range(&self) -> Range {
+        //Both union elements have the same size and are valid for all bit patterns
+        unsafe {self.maybe_range.range }
+    }
+
+    pub fn not_range(&self) -> NotRange {
+        //Both union elements have the same size and are valid for all bit patterns
+        unsafe {self.maybe_range.not_range }
+    }
+
+    pub fn button(&self) -> Button {
+        //Both union elements have the same size and are valid for all bit patterns
+        unsafe {self.maybe_button.button }
+    }
+
+    pub fn not_button(&self) -> NotButton {
+        //Both union elements have the same size and are valid for all bit patterns
+        unsafe {self.maybe_button.not_button }
+    }
+
 }
 
 #[derive(Copy, Clone)]
