@@ -1,15 +1,16 @@
 mod typedefs;
 mod types;
+#[cfg(test)]
+mod tests;
 
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::iter::once;
-use std::ops::DerefMut;
 use std::ptr::addr_of;
 use std::rc::Rc;
 use std::slice;
 use crate::ensure;
-use crate::windows_native::descriptor::typedefs::{HidpPreparsedData, LinkCollectionNode};
+use crate::windows_native::descriptor::typedefs::{Caps, HidpPreparsedData, LinkCollectionNode};
 use crate::windows_native::descriptor::types::{BitRange, ItemNodeType, Items, MainItemNode, MainItems, ReportType};
 use crate::windows_native::error::{WinError, WinResult};
 use crate::windows_native::hid::PreparsedData;
@@ -30,6 +31,15 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
             slice::from_raw_parts(ptr, len)
         };
 
+        let caps_list = {
+            let caps_len = ReportType::values()
+                .into_iter()
+                .map(|r| (*header).caps_info[r as usize].last_cap)
+                .max()
+                .unwrap() as usize;
+            slice::from_raw_parts(header.offset(1) as *const Caps, caps_len)
+        };
+
         // ****************************************************************************************************************************
         // Create lookup tables for the bit range of each report per collection (position of first bit and last bit in each collection)
         // coll_bit_range[COLLECTION_INDEX][REPORT_ID][INPUT/OUTPUT/FEATURE]
@@ -46,7 +56,7 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
         for rt_idx in ReportType::values() {
             let caps_info = (*header).caps_info[rt_idx as usize];
             for caps_idx in caps_info.first_cap..caps_info.last_cap {
-                let caps = (*header).caps[caps_idx as usize];
+                let caps = caps_list[caps_idx as usize];
                 let first_bit = (caps.byte_position - 1) * 8 + caps.bit_position as u16;
                 let last_bit = first_bit + caps.report_size * caps.report_count - 1;
                 let range = coll_bit_range.get_mut(&(caps.link_collection as usize, caps.report_id, rt_idx)).unwrap();
@@ -255,14 +265,14 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                             &mut main_item_list));
                         delimiter_close_node = main_item_list.clone();
                     } else if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_some() {
-                        coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                        coll_begin_lookup.insert(collection_node_idx, insert_main_item_node(
                             MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
                             &mut first_delimiter_node));
                     } else if !link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_some() {
-                        coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                        coll_begin_lookup.insert(collection_node_idx, insert_main_item_node(
                             MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
                             &mut first_delimiter_node));
-                        coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                        coll_begin_lookup.insert(collection_node_idx, insert_main_item_node(
                             MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0),
                             &mut first_delimiter_node));
                         first_delimiter_node = None;
@@ -294,7 +304,7 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
             let mut delimiter_close_node = None;
             let caps_info = (*header).caps_info[rt_idx as usize];
             for caps_idx in caps_info.first_cap..caps_info.last_cap {
-                let caps = (*header).caps[caps_idx as usize];
+                let caps = caps_list[caps_idx as usize];
                 let mut coll_begin = coll_begin_lookup[&(caps.link_collection as usize)].clone();
                 let first_bit = (caps.byte_position - 1) * 8 + caps.bit_position as u16;
                 let last_bit = first_bit + caps.report_size * caps.report_count - 1;
@@ -316,27 +326,27 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                 if caps.is_alias() && first_delimiter_node.is_none() {
                     // Alliased Usage (First node in pp_data->caps -> Last entry in report descriptor output)
                     first_delimiter_node = Some(list_node.clone());
-                    append_main_item_node(
+                    insert_main_item_node(
                         MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
                         &mut Some(list_node.clone())
                     );
-                    append_main_item_node(
+                    insert_main_item_node(
                         MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterClose, caps.report_id),
                         &mut Some(list_node.clone())
                     );
                     delimiter_close_node = Some(list_node.clone());
                 } else if caps.is_alias() && first_delimiter_node.is_some() {
-                    append_main_item_node(
+                    insert_main_item_node(
                         MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
                         &mut Some(list_node.clone())
                     );
                 } else if !caps.is_alias() && first_delimiter_node.is_some() {
                     // Alliased Collection (Last node in pp_data->caps -> First entry in report descriptor output)
-                    append_main_item_node(
+                    insert_main_item_node(
                         MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
                         &mut Some(list_node.clone())
                     );
-                    append_main_item_node(
+                    insert_main_item_node(
                         MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterOpen, caps.report_id),
                         &mut Some(list_node.clone())
                     );
@@ -344,7 +354,7 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                     list_node = delimiter_close_node.take().unwrap();
                 }
                 if !caps.is_alias() {
-                    append_main_item_node(
+                    insert_main_item_node(
                         MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, rt_idx.into(), caps.report_id),
                         &mut Some(list_node.clone())
                     );
@@ -377,7 +387,7 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                     if lbp + 1 != list.first_bit as i32 && lrip.as_ref()
                         .is_some_and(|i| i.first_bit != list.first_bit) {
                         let list_node = search_list(lbp, list.main_item_type, list.report_id, lrip.unwrap());
-                        append_main_item_node(
+                        insert_main_item_node(
                             MainItemNode::new((lbp + 1) as u16, list.first_bit - 1, ItemNodeType::Padding, -1, 0, list.main_item_type, list.report_id),
                             &mut Some(list_node)
                         );
@@ -394,7 +404,7 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                         if padding < 8 {
                             // Insert padding item after item referenced in last_report_item_lookup
                             let mut lrip = last_report_item_lookup.get_mut(&(rt_idx.into(), report_idx)).cloned();
-                            append_main_item_node(
+                            insert_main_item_node(
                                 MainItemNode::new((lbp + 1) as u16, (lbp + padding) as u16, ItemNodeType::Padding, -1, 0, rt_idx.into(), report_idx),
                                 &mut lrip
                             );
@@ -470,7 +480,7 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                 _ if current.node_type == ItemNodeType::Padding => {
 
                 },
-                _ if (*header).caps[caps_idx as usize].is_button_cap() => {
+                _ if caps_list[caps_idx as usize].is_button_cap() => {
 
                 }
                 _ => {
@@ -478,7 +488,7 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
                 }
             }
 
-            main_item_list = current.next.get().cloned();
+            main_item_list = current.next.get();
         }
 
         // TODO Implement the rest
@@ -502,16 +512,27 @@ fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, mut li
     list.clone()
 }
 
+fn insert_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) -> Rc<MainItemNode> {
+    let current = list.clone().unwrap();
+    let next_item = current.next.get();
+    current.next.set(None);
+    append_main_item_node(node, &mut Some(current.clone()));
+    current.next.get().unwrap().next.set(next_item);
+    current.next.get().unwrap()
+
+}
+
 fn append_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) -> Rc<MainItemNode> {
+    println!("{:?}", node);
     let rc = Rc::new(node);
     match list {
         None => *list = Some(rc.clone()),
         Some(ref current) => {
-            let mut current = current;
+            let mut current = current.clone();
             loop {
                 match current.next.get() {
                     None => {
-                        current.next.set(rc.clone()).unwrap();
+                        current.next.set(rc.clone());
                         break;
                     },
                     Some(next) => current = next
@@ -571,3 +592,4 @@ impl DescriptorWriter {
     }
 
 }
+

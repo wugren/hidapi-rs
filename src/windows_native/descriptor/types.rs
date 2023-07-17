@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use std::cell::{OnceCell};
+use std::cell::{Cell};
+use std::fmt::{Debug, Formatter};
 use std::rc::Rc;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -98,7 +99,7 @@ pub enum ItemNodeType {
     Collection,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct MainItemNode {
     pub first_bit: u16,
     pub last_bit: u16,
@@ -107,11 +108,43 @@ pub struct MainItemNode {
     pub collection_index: usize,
     pub main_item_type: MainItems,
     pub report_id: u8,
-    pub next: OnceCell<Rc<MainItemNode>>
+    pub next: CloneCell<Rc<MainItemNode>>
 }
 
 impl MainItemNode {
     pub fn new(first_bit: u16, last_bit: u16, node_type: ItemNodeType, caps_index: i32, collection_index: usize, main_item_type: MainItems, report_id: u8) -> Self {
         Self { first_bit, last_bit, node_type, caps_index, collection_index, main_item_type, report_id, next: Default::default() }
+    }
+}
+
+pub struct CloneCell<T>(Cell<Option<T>>);
+
+impl<T> Default for CloneCell<T> {
+    fn default() -> Self {
+        Self(Cell::new(None))
+    }
+}
+
+impl<T> Debug for CloneCell<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CloneCell(...)")
+    }
+}
+
+impl<T: Clone> Clone for CloneCell<T> {
+    fn clone(&self) -> Self {
+        let t = self.get();
+        Self(Cell::new(t))
+    }
+}
+
+impl<T: Clone> CloneCell<T> {
+    pub fn set<I: Into<Option<T>>>(&self, t: I) {
+        self.0.set(t.into());
+    }
+    pub fn get(&self) -> Option<T> {
+        let t = self.0.take();
+        self.0.set(t.clone());
+        t
     }
 }

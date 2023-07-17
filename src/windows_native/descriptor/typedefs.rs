@@ -1,7 +1,16 @@
+use std::mem::size_of;
+
+#[macro_export]
+macro_rules! const_assert {
+    ($x:expr $(,)?) => {
+        #[allow(unknown_lints, eq_op)]
+        const _: [(); 0 - !{ const ASSERT: bool = $x; ASSERT } as usize] = [];
+    };
+}
 
 pub type Usage = u16;
 
-
+const_assert!(size_of::<LinkCollectionNode>() == 16);
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct LinkCollectionNode {
@@ -16,14 +25,14 @@ pub struct LinkCollectionNode {
 
 impl LinkCollectionNode {
     pub fn is_alias(&self) -> bool {
-        self.bits & 1u32 << 23 != 0
+        self.bits & 1u32 << 8 != 0
     }
     pub fn collection_type(&self) -> u8 {
-        self.bits.to_be_bytes()[0]
+        (self.bits & 0xFFu32) as u8
     }
 }
 
-//Size checked
+const_assert!(size_of::<CapsInfo>() == 8);
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct CapsInfo {
@@ -33,7 +42,8 @@ pub struct CapsInfo {
     pub report_byte_length: u16
 }
 
-//Size checked
+
+const_assert!(size_of::<UnknownToken>() == 8);
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct UnknownToken {
@@ -101,7 +111,7 @@ pub union MaybeRange {
 }
 
 
-//Size checked
+const_assert!(size_of::<Caps>() == 104);
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Caps {
@@ -128,10 +138,10 @@ pub struct Caps {
 
 impl Caps {
     pub fn is_alias(&self) -> bool {
-        self.flags & (1 << 2) != 0
+        self.flags & (1 << 5) != 0
     }
     pub fn is_button_cap(&self) -> bool {
-        self.flags & (1 << 5) != 0
+        self.flags & (1 << 2) != 0
     }
 }
 
@@ -144,21 +154,5 @@ pub struct HidpPreparsedData {
     _reserved: [u16; 2],
     pub caps_info: [CapsInfo; 3],
     pub first_byte_of_link_collection_array: u16,
-    pub number_link_collection_nodes: u16,
-    pub caps: [Caps; 3]
-}
-
-#[cfg(test)]
-mod test {
-    use std::mem::size_of;
-    use super::*;
-
-    #[test]
-    fn test_struct_sizes() {
-        assert_eq!(size_of::<Caps>(), 104);
-        assert_eq!(size_of::<UnknownToken>(), 8);
-        assert_eq!(size_of::<CapsInfo>(), 8);
-        assert_eq!(size_of::<LinkCollectionNode>(), 16);
-    }
-
+    pub number_link_collection_nodes: u16
 }
