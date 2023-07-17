@@ -423,6 +423,60 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
         let mut report_count = 0;
 
         while let Some(current) = main_item_list {
+            let rt_idx = current.main_item_type;
+            let caps_idx = current.caps_index;
+            match current.main_item_type {
+                MainItems::Collection => {
+                    if last_usage_page != link_collection_nodes[current.collection_index].link_usage_page {
+                        // Write "Usage Page" at the begin of a collection - except it refers the same table as wrote last
+                        last_usage_page = link_collection_nodes[current.collection_index].link_usage_page;
+                        writer.write(Items::GlobalUsagePage, last_usage_page)?;
+                    }
+                    if inhibit_write_of_usage {
+                        // Inhibit only once after DELIMITER statement
+                        inhibit_write_of_usage = false;
+                    } else {
+                        // Write "Usage" of collection
+                        writer.write(Items::LocalUsage, link_collection_nodes[current.collection_index].link_usage)?;
+                    }
+                    // Write begin of "Collection"
+                    writer.write(Items::MainCollection, link_collection_nodes[current.collection_index].collection_type())?;
+                }
+                MainItems::CollectionEnd => {
+                    // Write "End Collection"
+                    writer.write(Items::MainCollectionEnd, 0)?;
+                }
+                MainItems::DelimiterOpen => {
+                    // Current.collection_index seems to always be != -1 -> removing branches compared to c
+                    // Write "Usage Page" inside of a collection delmiter section
+                    if last_usage_page != link_collection_nodes[current.collection_index].link_usage_page {
+                        last_usage_page = link_collection_nodes[current.collection_index].link_usage_page;
+                        writer.write(Items::GlobalUsagePage, link_collection_nodes[current.collection_index].collection_type())?;
+                    }
+                    // Write "Delimiter Open"
+                    writer.write(Items::LocalDelimiter, 1)?; // 1 = open set of aliased usages
+                }
+                MainItems::DelimiterUsage => {
+                    // Current.collection_index seems to always be != -1 -> removing branches compared to c
+                    // Write aliased collection "Usage"
+                    writer.write(Items::LocalUsage, link_collection_nodes[current.collection_index].link_usage)?;
+                }
+                MainItems::DelimiterClose => {
+                    // Write "Delimiter Close"
+                    writer.write(Items::LocalDelimiter, 0)?; // 0 = close set of aliased usages
+                    // Inhibit next usage write
+                    inhibit_write_of_usage = true;
+                },
+                _ if current.node_type == ItemNodeType::Padding => {
+
+                },
+                _ if (*header).caps[caps_idx as usize].is_button_cap() => {
+
+                }
+                _ => {
+
+                }
+            }
 
             main_item_list = current.next.get().cloned();
         }

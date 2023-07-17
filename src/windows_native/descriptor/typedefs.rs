@@ -18,6 +18,9 @@ impl LinkCollectionNode {
     pub fn is_alias(&self) -> bool {
         self.bits & 1u32 << 23 != 0
     }
+    pub fn collection_type(&self) -> u8 {
+        self.bits.to_be_bytes()[0]
+    }
 }
 
 //Size checked
@@ -126,6 +129,9 @@ pub struct Caps {
 impl Caps {
     pub fn is_alias(&self) -> bool {
         self.flags & (1 << 2) != 0
+    }
+    pub fn is_button_cap(&self) -> bool {
+        self.flags & (1 << 5) != 0
     }
 }
 
