@@ -4,7 +4,6 @@ use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetManufacturerStri
 use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVPKEY_Device_HardwareIds, DEVPKEY_Device_InstanceId, DEVPKEY_Device_Manufacturer, DEVPKEY_NAME};
 use windows_sys::Win32::Foundation::{BOOLEAN, HANDLE};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
-use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, DeviceInfo, WcharString};
 use crate::windows_native::dev_node::DevNode;
 use crate::windows_native::error::WinResult;
@@ -52,11 +51,11 @@ pub fn get_device_info(path: &U16Str, handle: &Handle) -> DeviceInfo {
 }
 
 fn get_internal_info(interface_path: &U16Str, dev: &mut DeviceInfo) -> WinResult<()> {
-    let device_id: U16String = Interface::get_property(interface_path, &DEVPKEY_Device_InstanceId)?;
+    let device_id: U16String = Interface::get_property(interface_path, DEVPKEY_Device_InstanceId)?;
 
     let dev_node = DevNode::from_device_id(&device_id)?.parent()?;
 
-    let compatible_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_CompatibleIds)?;
+    let compatible_ids: U16StringList = dev_node.get_property(DEVPKEY_Device_CompatibleIds)?;
 
     let bus_type = compatible_ids
         .iter()
@@ -92,7 +91,7 @@ fn get_internal_info(interface_path: &U16Str, dev: &mut DeviceInfo) -> WinResult
 }
 
 fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> WinResult<()> {
-    let mut device_id: U16String = dev_node.get_property(&DEVPKEY_Device_InstanceId)?;
+    let mut device_id: U16String = dev_node.get_property(DEVPKEY_Device_InstanceId)?;
 
     device_id.make_uppercase_ascii();
     /* Check for Xbox Common Controller class (XUSB) device.
@@ -103,7 +102,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> WinResult<()> {
         dev_node = dev_node.parent()?;
     }
 
-    let mut hardware_ids: U16StringList = dev_node.get_property(&DEVPKEY_Device_HardwareIds)?;
+    let mut hardware_ids: U16StringList = dev_node.get_property(DEVPKEY_Device_HardwareIds)?;
 
     /* Get additional information from USB device's Hardware ID
 	   https://docs.microsoft.com/windows-hardware/drivers/install/standard-usb-identifiers
@@ -126,7 +125,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> WinResult<()> {
 
     /* Try to get USB device manufacturer string if not provided by HidD_GetManufacturerString. */
     if dev.manufacturer_string().map_or(true, str::is_empty) {
-        if let Ok(manufacturer_string) = dev_node.get_property::<U16String>(&DEVPKEY_Device_Manufacturer) {
+        if let Ok(manufacturer_string) = dev_node.get_property::<U16String>(DEVPKEY_Device_Manufacturer) {
             dev.manufacturer_string = (&*manufacturer_string).into();
         }
     }
@@ -141,7 +140,7 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> WinResult<()> {
             usb_dev_node = dev_node.parent()?;
         }
 
-        let device_id: U16String = usb_dev_node.get_property(&DEVPKEY_Device_InstanceId)?;
+        let device_id: U16String = usb_dev_node.get_property(DEVPKEY_Device_InstanceId)?;
 
         /* Extract substring after last '\\' of Instance ID.
 		   For USB devices it may contain device's serial number.
@@ -171,25 +170,24 @@ fn get_usb_info(dev: &mut DeviceInfo, mut dev_node: DevNode) -> WinResult<()> {
 fn get_ble_info(dev: &mut DeviceInfo, dev_node: DevNode) -> WinResult<()>{
     if dev.manufacturer_string().map_or(true, str::is_empty) {
         if let Ok(manufacturer_string) = dev_node.get_property::<U16String>(
-            (&PKEY_DeviceInterface_Bluetooth_Manufacturer as *const PROPERTYKEY) as _) {
+            PKEY_DeviceInterface_Bluetooth_Manufacturer) {
             dev.manufacturer_string = manufacturer_string.into();
         }
     }
 
     if dev.serial_number().map_or(true, str::is_empty) {
-        if let Ok(serial_number) = dev_node.get_property::<U16String>(
-            (&PKEY_DeviceInterface_Bluetooth_DeviceAddress as *const PROPERTYKEY) as _) {
+        if let Ok(serial_number) = dev_node.get_property::<U16String>(PKEY_DeviceInterface_Bluetooth_DeviceAddress) {
             dev.serial_number = serial_number.into();
         }
     }
 
     if dev.product_string().map_or(true, str::is_empty) {
-        let product_string = dev_node.get_property::<U16String>(
-            (&PKEY_DeviceInterface_Bluetooth_ModelNumber as *const PROPERTYKEY) as _
-        ).or_else(|_| {
+        let product_string = dev_node
+            .get_property::<U16String>(PKEY_DeviceInterface_Bluetooth_ModelNumber)
+            .or_else(|_| {
             /* Fallback: Get devnode grandparent to reach out Bluetooth LE device node */
             dev_node.parent()
-                .and_then(|parent_dev_node| parent_dev_node.get_property(&DEVPKEY_NAME))
+                .and_then(|parent_dev_node| parent_dev_node.get_property(DEVPKEY_NAME))
         });
         if let Ok(product_string) = product_string {
             dev.product_string = product_string.into();

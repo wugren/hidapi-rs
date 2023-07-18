@@ -307,10 +307,10 @@ impl HidDeviceBackendWindows for HidDevice {
         let path = U16String::try_from(self.device_info.path())
             .expect("device path is not valid unicode");
 
-        let device_id: U16String = Interface::get_property(&path, &DEVPKEY_Device_InstanceId)?;
+        let device_id: U16String = Interface::get_property(&path, DEVPKEY_Device_InstanceId)?;
 
         let dev_node = DevNode::from_device_id(&device_id)?;
-        let guid = dev_node.get_property(&DEVPKEY_Device_ContainerId)?;
+        let guid = dev_node.get_property(DEVPKEY_Device_ContainerId)?;
         Ok(guid)
     }
 }

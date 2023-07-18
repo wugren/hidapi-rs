@@ -1,24 +1,23 @@
 use std::ptr::{null, null_mut};
 use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CR_BUFFER_SMALL, CR_SUCCESS};
-use windows_sys::Win32::Devices::Properties::DEVPROPKEY;
 use crate::ensure;
 use crate::windows_native::error::{check_config, WinError, WinResult};
 use crate::windows_native::hid::get_interface_guid;
 use crate::windows_native::string::{U16Str, U16StringList};
-use crate::windows_native::types::DeviceProperty;
+use crate::windows_native::types::{DeviceProperty, PropertyKey};
 
 pub struct Interface;
 
 impl Interface {
 
-    fn get_property_size<T: DeviceProperty>(interface: &U16Str, property_key: *const DEVPROPKEY) -> WinResult<usize> {
+    fn get_property_size<T: DeviceProperty>(interface: &U16Str, property_key: impl PropertyKey) -> WinResult<usize> {
         let mut property_type = 0;
         let mut len = 0;
         let cr = unsafe {
             CM_Get_Device_Interface_PropertyW(
                 interface.as_ptr(),
-                property_key,
+                property_key.as_ptr(),
                 &mut property_type,
                 null_mut(),
                 &mut len,
@@ -30,7 +29,7 @@ impl Interface {
         Ok(len as usize)
     }
 
-    pub fn get_property<T: DeviceProperty>(interface: &U16Str, property_key: *const DEVPROPKEY) -> WinResult<T> {
+    pub fn get_property<T: DeviceProperty>(interface: &U16Str, property_key: impl PropertyKey) -> WinResult<T> {
         let size = Self::get_property_size::<T>(interface, property_key)?;
         let mut property = T::create_sized(size);
         let mut property_type = 0;
@@ -38,7 +37,7 @@ impl Interface {
         let cr = unsafe {
             CM_Get_Device_Interface_PropertyW(
                 interface.as_ptr(),
-                property_key,
+                property_key.as_ptr(),
                 &mut property_type,
                 property.as_ptr_mut(),
                 &mut len,

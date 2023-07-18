@@ -1,4 +1,4 @@
-use hidapi::{HidApi, HidError};
+use hidapi::HidApi;
 
 fn main() {
     println!("Printing all available hid devices:");

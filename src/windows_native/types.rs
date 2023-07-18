@@ -1,10 +1,11 @@
 use std::mem::{size_of, zeroed};
 use std::ptr::null;
 use windows_sys::core::GUID;
-use windows_sys::Win32::Devices::Properties::{DEVPROP_TYPE_GUID, DEVPROPTYPE};
+use windows_sys::Win32::Devices::Properties::{DEVPROP_TYPE_GUID, DEVPROPKEY, DEVPROPTYPE};
 use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE, TRUE};
 use windows_sys::Win32::System::IO::{GetOverlappedResultEx, OVERLAPPED};
 use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE};
+use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
 use crate::{BusType, ensure};
 use crate::windows_native::error::{WinError, WinResult};
 
@@ -29,6 +30,21 @@ unsafe impl DeviceProperty for GUID {
     }
 }
 
+pub trait PropertyKey: Copy {
+    fn as_ptr(&self) -> *const DEVPROPKEY;
+}
+
+impl PropertyKey for DEVPROPKEY {
+    fn as_ptr(&self) -> *const DEVPROPKEY {
+        self
+    }
+}
+
+impl PropertyKey for PROPERTYKEY {
+    fn as_ptr(&self) -> *const DEVPROPKEY {
+        self as *const PROPERTYKEY as _
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum InternalBusType {

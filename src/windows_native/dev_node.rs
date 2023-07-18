@@ -1,10 +1,9 @@
 use std::ptr::null_mut;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
-use windows_sys::Win32::Devices::Properties::DEVPROPKEY;
 use crate::ensure;
 use crate::windows_native::error::{check_config, WinError, WinResult};
 use crate::windows_native::string::U16Str;
-use crate::windows_native::types::DeviceProperty;
+use crate::windows_native::types::{DeviceProperty, PropertyKey};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -28,13 +27,13 @@ impl DevNode {
         Ok(Self(parent))
     }
 
-    fn get_property_size<T: DeviceProperty>(self, property_key: *const DEVPROPKEY) -> WinResult<usize> {
+    fn get_property_size<T: DeviceProperty>(self, property_key: impl PropertyKey) -> WinResult<usize> {
         let mut property_type = 0;
         let mut len = 0;
         let cr = unsafe {
             CM_Get_DevNode_PropertyW(
                 self.0,
-                property_key,
+                property_key.as_ptr(),
                 &mut property_type,
                 null_mut(),
                 &mut len,
@@ -46,7 +45,7 @@ impl DevNode {
         Ok(len as usize)
     }
 
-    pub fn get_property<T: DeviceProperty>(self, property_key: *const DEVPROPKEY) -> WinResult<T> {
+    pub fn get_property<T: DeviceProperty>(self, property_key: impl PropertyKey) -> WinResult<T> {
         let size = self.get_property_size::<T>(property_key)?;
         let mut property = T::create_sized(size);
         let mut property_type = 0;
@@ -54,7 +53,7 @@ impl DevNode {
         let cr = unsafe {
             CM_Get_DevNode_PropertyW(
                 self.0,
-                property_key,
+                property_key.as_ptr(),
                 &mut property_type,
                 property.as_ptr_mut(),
                 &mut len,
