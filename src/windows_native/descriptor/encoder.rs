@@ -229,6 +229,129 @@ pub fn encode_descriptor(mut main_item_list: Option<Rc<MainItemNode>>, caps_list
 
             }
             _ => {
+                let mut caps = caps_list[caps_idx as usize];
+
+                if last_report_id != caps.report_id {
+                    // Write "Report ID" if changed
+                    last_report_id = caps.report_id;
+                    writer.write(Items::GlobalReportId, last_report_id)?;
+                }
+
+                // Write "Usage Page" if changed
+                if caps.usage_page != last_usage_page {
+                    last_usage_page = caps.usage_page;
+                    writer.write(Items::GlobalUsagePage, last_usage_page)?;
+                }
+
+                if inhibit_write_of_usage {
+                    // Inhibit only once after Delimiter - Reset flag
+                    inhibit_write_of_usage = false;
+                } else {
+                    if caps.is_range() {
+                        // Write usage range from "Usage Minimum" to "Usage Maximum"
+                        writer.write(Items::LocalUsageMinimum, caps.range().usage_min)?;
+                        writer.write(Items::LocalUsageMaximum, caps.range().usage_max)?;
+                    } else {
+                        // Write single "Usage"
+                        writer.write(Items::LocalUsage, caps.not_range().usage)?;
+                    }
+                }
+
+                if caps.is_desginator_range() {
+                    // Write physical descriptor indices range from "Designator Minimum" to "Designator Maximum"
+                    writer.write(Items::LocalDesignatorMinimum, caps.range().designator_min)?;
+                    writer.write(Items::LocalDesignatorMaximum, caps.range().designator_max)?;
+                } else if caps.not_range().designator_index != 0 {
+                    // Designator set 0 is a special descriptor set (of the HID Physical Descriptor),
+                    // that specifies the number of additional descriptor sets.
+                    // Therefore Designator Index 0 can never be a useful reference for a control and we can inhibit it.
+                    // Write single "Designator Index"
+                    writer.write(Items::LocalDesignatorIndex, caps.not_range().designator_index)?;
+                }
+
+                if caps.is_string_range() {
+                    // Write range of indices of the USB string descriptor, from "String Minimum" to "String Maximum"
+                    writer.write(Items::LocalStringMinimum, caps.range().string_min)?;
+                    writer.write(Items::LocalStringMaximum, caps.range().string_max)?;
+                } else if caps.not_range().string_index != 0 {
+                    // String Index 0 is a special entry of the USB string descriptor, that contains a list of supported languages,
+                    // therefore Designator Index 0 can never be a useful reference for a control and we can inhibit it.
+                    // Write single "String Index"
+                    writer.write(Items::LocalString, caps.not_range().string_index)?;
+                }
+
+                if (caps.bit_field & 0x02) != 0x02 {
+                    // In case of an value array overwrite "Report Count"
+                    caps.report_count = caps.range().data_index_max - caps.range().data_index_min + 1;
+                }
+
+                if current.next.get().is_some_and(|next| {
+                    let next_caps = caps_list[next.caps_index as usize];
+                    next.main_item_type == rt_idx &&
+                        next.node_type == ItemNodeType::Cap &&
+                        !next_caps.is_button_cap() &&
+                        !caps.is_range() &&
+                        !next_caps.is_range() &&
+                        next_caps.usage_page == caps.usage_page &&
+                        next_caps.not_button().logical_min == caps.not_button().logical_min &&
+                        next_caps.not_button().logical_max == caps.not_button().logical_max &&
+                        next_caps.not_button().physical_min == caps.not_button().physical_min &&
+                        next_caps.not_button().physical_max == caps.not_button().physical_max &&
+                        next_caps.units_exp == caps.units_exp &&
+                        next_caps.units == caps.units &&
+                        next_caps.report_size == caps.report_size &&
+                        next_caps.report_id == caps.report_id &&
+                        next_caps.bit_field == caps.bit_field &&
+                        next_caps.report_count == 1 &&
+                        caps.report_count == 1
+                }) {
+                    // Skip global items until any of them changes, than use ReportCount item to write the count of identical report fields
+                    report_count += 1;
+                } else {
+                    // Value
+
+                    // Write logical range from "Logical Minimum" to "Logical Maximum"
+                    writer.write(Items::GlobalLogicalMinimum, caps.not_button().logical_min)?;
+                    writer.write(Items::GlobalLogicalMaximum, caps.not_button().logical_max)?;
+
+                    if (last_physical_min != caps.not_button().physical_min) || (last_physical_max != caps.not_button().physical_max) {
+                        // Write range from "Physical Minimum" to " Physical Maximum", but only if one of them changed
+                        last_physical_min = caps.not_button().physical_min;
+                        last_physical_max = caps.not_button().physical_max;
+                        writer.write(Items::GlobalPhysicalMinimum, last_physical_min)?;
+                        writer.write(Items::GlobalPhysicalMaximum, last_physical_max)?;
+                    }
+
+                    if last_unit_exponent != caps.units_exp {
+                        // Write "Unit Exponent", but only if changed
+                        last_unit_exponent = caps.units_exp;
+                        writer.write(Items::GlobalUnitExponent, last_unit_exponent)?;
+                    }
+
+                    if last_unit != caps.units {
+                        // Write physical "Unit", but only if changed
+                        last_unit = caps.units;
+                        writer.write(Items::GlobalUnit, last_unit)?;
+                    }
+
+                    // Write "Report Size"
+                    writer.write(Items::GlobalReportSize, caps.report_size)?;
+
+                    // Write "Report Count"
+                    writer.write(Items::GlobalReportCount, caps.report_count + report_count)?;
+
+                    if rt_idx == MainItems::Input {
+                        // Write "Input" main item
+                        writer.write(Items::MainInput, caps.bit_field)?;
+                    } else if rt_idx == MainItems::Output {
+                        // Write "Output" main item
+                        writer.write(Items::MainOutput, caps.bit_field)?;
+                    } else if rt_idx == MainItems::Feature {
+                        // Write "Feature" main item
+                        writer.write(Items::MainFeature, caps.bit_field)?;
+                    }
+                    report_count = 0;
+                }
 
             }
         }
