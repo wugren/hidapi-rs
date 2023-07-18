@@ -1,9 +1,9 @@
-use std::rc::Rc;
+use crate::windows_native::descriptor::PeakIterExt;
 use crate::windows_native::descriptor::typedefs::{Caps, LinkCollectionNode};
 use crate::windows_native::descriptor::types::{ItemNodeType, Items, MainItemNode, MainItems};
 use crate::windows_native::error::{WinError, WinResult};
 
-pub fn encode_descriptor(mut main_item_list: Option<Rc<MainItemNode>>, caps_list: &[Caps], link_collection_nodes: &[LinkCollectionNode]) -> WinResult<Vec<u8>> {
+pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], link_collection_nodes: &[LinkCollectionNode]) -> WinResult<Vec<u8>> {
     // ***********************************
     // Encode the report descriptor output
     // ***********************************
@@ -19,7 +19,7 @@ pub fn encode_descriptor(mut main_item_list: Option<Rc<MainItemNode>>, caps_list
     let mut inhibit_write_of_usage = false; // Needed in case of delimited usage print, before the normal collection or cap
     let mut report_count = 0;
 
-    while let Some(current) = main_item_list {
+    for (current, next) in main_item_list.iter().peaking() {
         let rt_idx = current.main_item_type;
         let caps_idx = current.caps_index;
         match current.main_item_type {
@@ -146,8 +146,7 @@ pub fn encode_descriptor(mut main_item_list: Option<Rc<MainItemNode>>, caps_list
                     writer.write(Items::LocalString, caps.not_range().string_index)?;
                 }
 
-                let next = current.next.get();
-                if next.as_ref().is_some_and(|next|
+                if next.is_some_and(|next|
                     next.main_item_type == rt_idx &&
                         next.node_type == ItemNodeType::Cap &&
                         !caps.is_range() && // This node in list is no array
@@ -285,7 +284,7 @@ pub fn encode_descriptor(mut main_item_list: Option<Rc<MainItemNode>>, caps_list
                     caps.report_count = caps.range().data_index_max - caps.range().data_index_min + 1;
                 }
 
-                if current.next.get().is_some_and(|next| {
+                if next.is_some_and(|next| {
                     let next_caps = caps_list[next.caps_index as usize];
                     next.main_item_type == rt_idx &&
                         next.node_type == ItemNodeType::Cap &&
@@ -355,11 +354,10 @@ pub fn encode_descriptor(mut main_item_list: Option<Rc<MainItemNode>>, caps_list
 
             }
         }
-
-        main_item_list = current.next.get();
     }
 
     Ok(writer.finish())
+
 }
 
 #[derive(Default)]

@@ -22,7 +22,7 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
 
     let list = reconstruct_descriptor(header, caps_list, link_collection_nodes);
 
-    encode_descriptor(list, caps_list, link_collection_nodes)
+    encode_descriptor(&list, caps_list, link_collection_nodes)
 }
 
 fn extract_structures(pp_data: &PreparsedData) -> WinResult<(HidpPreparsedData, &[Caps], &[LinkCollectionNode])> {
@@ -47,7 +47,7 @@ fn extract_structures(pp_data: &PreparsedData) -> WinResult<(HidpPreparsedData, 
     }
 }
 
-fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_collection_nodes: &[LinkCollectionNode]) -> Option<Rc<MainItemNode>> {
+fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_collection_nodes: &[LinkCollectionNode]) -> Vec<MainItemNode> {
     // ****************************************************************************************************************************
     // Create lookup tables for the bit range of each report per collection (position of first bit and last bit in each collection)
     // coll_bit_range[COLLECTION_INDEX][REPORT_ID][INPUT/OUTPUT/FEATURE]
@@ -197,8 +197,6 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
     // ***************************************************************************************
     let mut main_item_list: Option<Rc<MainItemNode>> = None;
     // Lookup table to find the Collection items in the list by index
-    let mut coll_begin_lookup = HashMap::new();
-    let mut coll_end_lookup = HashMap::new();
     {
         let mut coll_last_written_child  = vec![-1i32; link_collection_nodes.len()];
 
@@ -206,11 +204,10 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
         let mut collection_node_idx = 0;
         let mut first_delimiter_node = None;
         let mut delimiter_close_node = None;
-        coll_begin_lookup.insert(0,
-                                 append_main_item_node(
+        append_main_item_node(
                                      MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0),
                                      &mut main_item_list
-                                 ));
+                                 );
         while actual_coll_level >= 0 {
             if coll_number_of_direct_childs[collection_node_idx] != 0 && coll_last_written_child[collection_node_idx] == -1 {
                 // Collection has child collections, but none is written to the list yet
@@ -222,17 +219,17 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                 // Here the preferred usage is the last aliased usage in the sequence.
                 if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_none() {
                     first_delimiter_node = main_item_list.clone();
-                    coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                    append_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
-                        &mut main_item_list));
-                    coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                        &mut main_item_list);
+                    append_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0),
-                        &mut main_item_list));
+                        &mut main_item_list);
                     delimiter_close_node = main_item_list.clone();
                 } else {
-                    coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                    append_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0),
-                        &mut main_item_list));
+                        &mut main_item_list);
                     actual_coll_level += 1;
                 }
             } else if coll_number_of_direct_childs[collection_node_idx] > 1 &&
@@ -249,38 +246,38 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                 if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_none() {
                     // Alliased Collection (First node in link_collection_nodes -> Last entry in report descriptor output)
                     first_delimiter_node = main_item_list.clone();
-                    coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                    append_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
-                        &mut main_item_list));
-                    coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                        &mut main_item_list);
+                    append_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0),
-                        &mut main_item_list));
+                        &mut main_item_list);
                     delimiter_close_node = main_item_list.clone();
                 } else if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_some() {
-                    coll_begin_lookup.insert(collection_node_idx, insert_main_item_node(
+                    insert_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
-                        &mut first_delimiter_node));
+                        &mut first_delimiter_node);
                 } else if !link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_some() {
-                    coll_begin_lookup.insert(collection_node_idx, insert_main_item_node(
+                    insert_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
-                        &mut first_delimiter_node));
-                    coll_begin_lookup.insert(collection_node_idx, insert_main_item_node(
+                        &mut first_delimiter_node);
+                    insert_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0),
-                        &mut first_delimiter_node));
+                        &mut first_delimiter_node);
                     first_delimiter_node = None;
                     main_item_list = delimiter_close_node.take();
                 }
                 if !link_collection_nodes[collection_node_idx].is_alias() {
-                    coll_begin_lookup.insert(collection_node_idx, append_main_item_node(
+                    append_main_item_node(
                         MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0),
-                        &mut main_item_list));
+                        &mut main_item_list);
                     actual_coll_level += 1;
                 }
             } else {
                 actual_coll_level -= 1;
-                coll_end_lookup.insert(collection_node_idx, append_main_item_node(
+                append_main_item_node(
                     MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::CollectionEnd, 0),
-                    &mut main_item_list));
+                    &mut main_item_list);
                 collection_node_idx = link_collection_nodes[collection_node_idx].parent as usize;
             }
         }
@@ -297,7 +294,10 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
         let caps_info = header.caps_info[rt_idx as usize];
         for caps_idx in caps_info.first_cap..caps_info.last_cap {
             let caps = caps_list[caps_idx as usize];
-            let mut coll_begin = coll_begin_lookup[&(caps.link_collection as usize)].clone();
+            let mut coll_begin = to_vec(&main_item_list)
+                .into_iter()
+                .find(|node| node.collection_index == caps.link_collection as usize)
+                .unwrap();
             let (first_bit, last_bit) = {
                 let range = caps.get_bit_range();
                 (range.first_bit, range.last_bit)
@@ -314,7 +314,12 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                     // Note, that the default value for undefined coll_bit_range is -1, which can't be greater than the bit position
                     break;
                 }
-                coll_begin = coll_end_lookup[&coll_child_order[&(caps.link_collection as usize, child_idx)]].clone();
+                let index = coll_child_order[&(caps.link_collection as usize, child_idx)];
+                coll_begin = to_vec(&main_item_list)
+                    .into_iter()
+                    .rev()
+                    .find(|node| node.collection_index == index)
+                    .unwrap();
             }
             let mut list_node = search_list(first_bit as i32, rt_idx.into(), caps.report_id, coll_begin.clone());
 
@@ -415,34 +420,38 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
             }
         }
     }
-    main_item_list
+    std::iter::successors(main_item_list, |current| current.next.get())
+        .map(|node| node.unlinked_copy())
+        .collect()
 }
 
-fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, mut list: Rc<MainItemNode>) -> Rc<MainItemNode> {
-    loop {
-        let next = list.next.get().unwrap().clone();
-        if next.main_item_type != MainItems::Collection &&
-            next.main_item_type != MainItems::CollectionEnd &&
-            !(next.last_bit as i32 >= search_bit && next.report_id == report_id && next.main_item_type == main_item_type) {
-            list = next;
-        } else {
-            break;
-        }
-    }
-    list.clone()
+fn to_vec(main_item_list: &Option<Rc<MainItemNode>>) -> Vec<Rc<MainItemNode>> {
+    std::iter::successors(main_item_list.clone(), |current| current.next.get())
+        .collect()
 }
 
-fn insert_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) -> Rc<MainItemNode> {
+fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, list: Rc<MainItemNode>) -> Rc<MainItemNode> {
+    to_vec(&Some(list))
+        .iter()
+        .peaking()
+        .find(|(_, next)| next.is_some_and(|next| next.main_item_type == MainItems::Collection ||
+            next.main_item_type == MainItems::CollectionEnd ||
+            (next.last_bit as i32 >= search_bit && next.report_id == report_id && next.main_item_type == main_item_type) ))
+        .map(|(current, _)| current)
+        .unwrap()
+        .clone()
+}
+
+fn insert_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) {
     let current = list.clone().unwrap();
     let next_item = current.next.get();
     current.next.set(None);
     append_main_item_node(node, &mut Some(current.clone()));
     current.next.get().unwrap().next.set(next_item);
-    current.next.get().unwrap()
 
 }
 
-fn append_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) -> Rc<MainItemNode> {
+fn append_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>) {
     let rc = Rc::new(node);
     match list {
         None => *list = Some(rc.clone()),
@@ -459,6 +468,36 @@ fn append_main_item_node(node: MainItemNode, list: &mut Option<Rc<MainItemNode>>
             }
         }
     }
-    rc
+
 }
 
+
+
+trait PeakIterExt<T: Iterator> {
+    fn peaking(self) -> PeakingIter<T>;
+}
+
+impl<T: Iterator> PeakIterExt<T> for T {
+    fn peaking(mut self) -> PeakingIter<T> {
+        PeakingIter {
+            next: self.next(),
+            inner: self,
+        }
+    }
+}
+
+struct PeakingIter<T: Iterator> {
+    inner: T,
+    next: Option<T::Item>
+}
+
+impl<T: Copy, I: Iterator<Item=T>> Iterator for PeakingIter<I> {
+    type Item = (I::Item, Option<I::Item>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.next.take();
+        self.next = self.inner.next();
+        current
+            .map(|v| (v, self.next))
+    }
+}

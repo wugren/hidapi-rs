@@ -124,6 +124,12 @@ impl MainItemNode {
     pub fn new(first_bit: u16, last_bit: u16, node_type: ItemNodeType, caps_index: i32, collection_index: usize, main_item_type: MainItems, report_id: u8) -> Self {
         Self { first_bit, last_bit, node_type, caps_index, collection_index, main_item_type, report_id, next: Default::default() }
     }
+
+    pub fn unlinked_copy(&self) -> MainItemNode {
+        let copy = self.clone();
+        copy.next.set(None);
+        copy
+    }
 }
 
 pub struct CloneCell<T>(Cell<Option<T>>);
