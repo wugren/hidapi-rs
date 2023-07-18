@@ -117,8 +117,6 @@ impl AsyncState {
 
 }
 
-//unsafe impl Send for HidDevice {}
-
 impl Debug for HidDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HidDevice").finish()
@@ -156,12 +154,10 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        assert!(!buf.is_empty());
+        ensure!(!buf.is_empty(), Err(HidError::InvalidZeroSizeData));
         let mut bytes_read = 0;
-        //let mut overlapped = self.ol.borrow_mut();
         let mut io_runnig = false;
         let mut state = self.read_state.borrow_mut();
-        //let mut read_buf = vec![0u8; self.input_report_length];
 
         if !self.read_pending.get() {
             self.read_pending.set(true);
@@ -286,7 +282,7 @@ impl HidDeviceBackendBase for HidDevice {
     fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
         let mut buf = [0u16; STRING_BUF_LEN];
         let res = unsafe { HidD_GetIndexedString(self.device_handle.as_raw(), index as u32, buf.as_mut_ptr() as _, STRING_BUF_LEN as u32) };
-        assert_ne!(res, 0);
+        check_boolean(res)?;
         Ok(buf.split(|c| *c == 0).map(String::from_utf16_lossy).next())
     }
 
@@ -336,7 +332,7 @@ fn enumerate_devices(vendor_id: u16, product_id: u16) -> WinResult<Vec<DeviceInf
         .collect())
 }
 
-fn open_device(path: &U16Str, open_rw: bool) -> HidResult<Handle> {
+fn open_device(path: &U16Str, open_rw: bool) -> WinResult<Handle> {
     let handle = unsafe {
         CreateFileW(
             path.as_ptr(),
@@ -351,7 +347,7 @@ fn open_device(path: &U16Str, open_rw: bool) -> HidResult<Handle> {
             0
         )
     };
-    ensure!(handle != INVALID_HANDLE_VALUE, Err(HidError::IoError{ error: std::io::Error::last_os_error() }));
+    ensure!(handle != INVALID_HANDLE_VALUE, Err(Win32Error::last().into()));
     Ok(Handle::from_raw(handle))
 }
 
@@ -367,8 +363,14 @@ fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<HidDevice> {
 fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
     let device_path = U16String::try_from(device_path)
         .unwrap();
-    let handle = open_device(&device_path, true)?;
-    assert_ne!(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) }, 0);
+    let handle = open_device(&device_path, true)
+        /* System devices, such as keyboards and mice, cannot be opened in
+		   read-write mode, because the system takes exclusive control over
+		   them.  This is to prevent keyloggers.  However, feature reports
+		   can still be sent and received.  Retry opening the device, but
+		   without read/write access. */
+        .or_else(|_| open_device(&device_path, false))?;
+    check_boolean(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) })?;
     let caps = PreparsedData::load(&handle)?.get_caps()?;
     let device_info = get_device_info(&device_path, &handle);
     let dev = HidDevice {
