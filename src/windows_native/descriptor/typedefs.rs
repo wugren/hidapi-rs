@@ -1,4 +1,5 @@
 use std::mem::size_of;
+use crate::windows_native::descriptor::types::BitRange;
 
 #[macro_export]
 macro_rules! const_assert {
@@ -41,7 +42,6 @@ pub struct CapsInfo {
     pub last_cap: u16,
     pub report_byte_length: u16
 }
-
 
 const_assert!(size_of::<UnknownToken>() == 8);
 #[derive(Copy, Clone)]
@@ -171,6 +171,15 @@ impl Caps {
     pub fn not_button(&self) -> NotButton {
         //Both union elements have the same size and are valid for all bit patterns
         unsafe {self.maybe_button.not_button }
+    }
+
+    pub fn get_bit_range(&self) -> BitRange {
+        let first_bit = (self.byte_position - 1) * 8 + self.bit_position as u16;
+        let last_bit = first_bit + self.report_size * self.report_count - 1;
+        BitRange {
+            first_bit,
+            last_bit,
+        }
     }
 
 }

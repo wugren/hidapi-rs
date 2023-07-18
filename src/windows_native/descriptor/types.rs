@@ -88,8 +88,17 @@ impl TryFrom<MainItems> for ReportType {
 
 #[derive(Default, Copy, Clone, Eq, PartialEq)]
 pub struct BitRange {
-    pub first_bit: Option<u16>,
-    pub last_bit: Option<u16>
+    pub first_bit: u16,
+    pub last_bit: u16
+}
+
+impl BitRange {
+    pub fn merge(self, other: BitRange) -> BitRange {
+        BitRange {
+            first_bit: self.first_bit.min(other.first_bit),
+            last_bit: self.last_bit.max(other.last_bit),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]

@@ -7,7 +7,6 @@ mod tests;
 
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::iter::once;
 use std::rc::Rc;
 use std::slice;
 use crate::ensure;
@@ -54,23 +53,15 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
     // coll_bit_range[COLLECTION_INDEX][REPORT_ID][INPUT/OUTPUT/FEATURE]
     // ****************************************************************************************************************************
     let mut coll_bit_range: HashMap<(usize, u8, ReportType), BitRange> = HashMap::new();
-    for collection_node_idx in 0..link_collection_nodes.len() {
-        for reportid_idx in 0..=255 {
-            for rt_idx in ReportType::values() {
-                coll_bit_range.insert((collection_node_idx, reportid_idx, rt_idx), BitRange::default());
-            }
-        }
-    }
-
     for rt_idx in ReportType::values() {
         let caps_info = header.caps_info[rt_idx as usize];
         for caps_idx in caps_info.first_cap..caps_info.last_cap {
             let caps = caps_list[caps_idx as usize];
-            let first_bit = (caps.byte_position - 1) * 8 + caps.bit_position as u16;
-            let last_bit = first_bit + caps.report_size * caps.report_count - 1;
-            let range = coll_bit_range.get_mut(&(caps.link_collection as usize, caps.report_id, rt_idx)).unwrap();
-            range.first_bit = range.first_bit.into_iter().chain(once(first_bit)).min();
-            range.last_bit = range.last_bit.into_iter().chain(once(last_bit)).max();
+            let range = caps.get_bit_range();
+            coll_bit_range
+                .entry((caps.link_collection as usize, caps.report_id, rt_idx))
+                .and_modify(|r| *r = r.merge(range))
+                .or_insert(range);
         }
     }
 
@@ -81,13 +72,8 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
     //  coll_number_of_direct_childs[COLLECTION_INDEX]
     // *************************************************************************
     let mut max_coll_level = 0;
-    let mut coll_levels = Vec::new();
-    let mut coll_number_of_direct_childs = Vec::new();
-    for _ in 0..header.number_link_collection_nodes {
-        coll_levels.push(-1);
-        coll_number_of_direct_childs.push(0);
-    }
-
+    let mut coll_levels = vec![-1; link_collection_nodes.len()];
+    let mut coll_number_of_direct_childs = vec![0; link_collection_nodes.len()];
     {
         let mut actual_coll_level = 0;
         let mut collection_node_idx = 0;
@@ -123,16 +109,13 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                 while child_idx != 0 {
                     for reportid_idx in 0..=255 {
                         for rt_idx in ReportType::values() {
-                            let child = coll_bit_range
-                                .get(&(child_idx, reportid_idx, rt_idx))
-                                .unwrap()
-                                .clone();
-                            let parent = coll_bit_range
-                                .get_mut(&(collection_node_idx, reportid_idx, rt_idx))
-                                .unwrap();
-                            parent.first_bit = parent.first_bit.into_iter().chain(child.first_bit).min();
-                            parent.last_bit = parent.last_bit.into_iter().chain(child.last_bit).max();
-                            child_idx = link_collection_nodes[child_idx as usize].next_sibling as usize;
+                            if let Some(child) = coll_bit_range.get(&(child_idx, reportid_idx, rt_idx)).copied() {
+                                coll_bit_range
+                                    .entry((collection_node_idx, reportid_idx, rt_idx))
+                                    .and_modify(|r| *r = r.merge(child))
+                                    .or_insert(child);
+                            }
+                            child_idx = link_collection_nodes[child_idx].next_sibling as usize;
                         }
                     }
                 }
@@ -160,8 +143,8 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                     // which seems to match teh original order, as long as no bit position needs to be considered
                     let mut child_idx = link_collection_nodes[collection_node_idx].first_child as usize;
                     let mut child_count = coll_number_of_direct_childs[collection_node_idx] - 1;
-                    coll_child_order.insert((collection_node_idx, child_count as u16), child_idx);
-                    while link_collection_nodes[child_idx as usize].next_sibling != 0 {
+                    coll_child_order.insert((collection_node_idx, child_count), child_idx);
+                    while link_collection_nodes[child_idx].next_sibling != 0 {
                         child_count -= 1;
                         child_idx = link_collection_nodes[child_idx].next_sibling as usize;
                         coll_child_order.insert((collection_node_idx, child_count as u16), child_idx);
@@ -183,14 +166,14 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                                     .unwrap();
                                 let swap = coll_bit_range
                                     .get(&(prev_coll_idx, report_idx, rt_idx))
-                                    .and_then(|prev| prev.first_bit)
+                                    .map(|prev| prev.first_bit)
                                     .zip(coll_bit_range
                                         .get(&(cur_coll_idx, report_idx, rt_idx))
-                                        .and_then(|prev| prev.first_bit))
+                                        .map(|prev| prev.first_bit))
                                     .map_or(false, |(prev, cur)| prev > cur);
                                 if swap {
-                                    coll_child_order.insert((collection_node_idx, (child_idx - 1) as u16), cur_coll_idx);
-                                    coll_child_order.insert((collection_node_idx, child_idx as u16), prev_coll_idx);
+                                    coll_child_order.insert((collection_node_idx, (child_idx - 1)), cur_coll_idx);
+                                    coll_child_order.insert((collection_node_idx, child_idx), prev_coll_idx);
                                 }
                             }
                         }
@@ -315,12 +298,19 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
         for caps_idx in caps_info.first_cap..caps_info.last_cap {
             let caps = caps_list[caps_idx as usize];
             let mut coll_begin = coll_begin_lookup[&(caps.link_collection as usize)].clone();
-            let first_bit = (caps.byte_position - 1) * 8 + caps.bit_position as u16;
-            let last_bit = first_bit + caps.report_size * caps.report_count - 1;
+            let (first_bit, last_bit) = {
+                let range = caps.get_bit_range();
+                (range.first_bit, range.last_bit)
+            };
 
             for child_idx in 0..coll_number_of_direct_childs[caps.link_collection as usize] {
                 // Determine in which section before/between/after child collection the item should be inserted
-                if first_bit < coll_bit_range[&(coll_child_order[&(caps.link_collection as usize, child_idx)], caps.report_id, rt_idx)].first_bit.unwrap_or(0) {
+                let child_first_bit = coll_child_order
+                    .get(&(caps.link_collection as usize, child_idx))
+                    .and_then(|i| coll_bit_range.get(&(*i, caps.report_id, rt_idx)))
+                    .map(|r| r.first_bit)
+                    .unwrap_or(0);
+                if first_bit < child_first_bit {
                     // Note, that the default value for undefined coll_bit_range is -1, which can't be greater than the bit position
                     break;
                 }
