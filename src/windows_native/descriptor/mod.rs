@@ -146,7 +146,7 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                     while link_collection_nodes[child_idx].next_sibling != 0 {
                         child_count -= 1;
                         child_idx = link_collection_nodes[child_idx].next_sibling as usize;
-                        coll_child_order.insert((collection_node_idx, child_count as u16), child_idx);
+                        coll_child_order.insert((collection_node_idx, child_count), child_idx);
                     }
                 }
 
@@ -158,10 +158,10 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                                 // since the coll_bit_range array is not sorted, we need to reference the collection index in
                                 // our sorted coll_child_order array, and look up the corresponding bit ranges for comparing values to sort
                                 let prev_coll_idx = *coll_child_order
-                                    .get(&(collection_node_idx, (child_idx - 1) as u16))
+                                    .get(&(collection_node_idx, child_idx - 1))
                                     .unwrap();
                                 let cur_coll_idx = *coll_child_order
-                                    .get(&(collection_node_idx, child_idx as u16))
+                                    .get(&(collection_node_idx, child_idx))
                                     .unwrap();
                                 let swap = coll_bit_range
                                     .get(&(prev_coll_idx, report_idx, rt_idx))
@@ -195,18 +195,14 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
     // Create sorted main_item_list containing all the Collection and CollectionEnd main items
     // ***************************************************************************************
     let mut main_item_list: Vec<MainItemNode> = Vec::new();
-    // Lookup table to find the Collection items in the list by index
     {
         let mut coll_last_written_child  = vec![-1i32; link_collection_nodes.len()];
 
         let mut actual_coll_level = 0;
         let mut collection_node_idx = 0;
-        let mut first_delimiter_node = None;
-        let mut delimiter_close_node = None;
+        let mut first_delimiter_node = false;
 
-        append_main_item_node(
-             MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0),
-             &mut main_item_list);
+        main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0));
         while actual_coll_level >= 0 {
             if coll_number_of_direct_childs[collection_node_idx] != 0 && coll_last_written_child[collection_node_idx] == -1 {
                 // Collection has child collections, but none is written to the list yet
@@ -216,23 +212,16 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                 // In a HID Report Descriptor, the first usage declared is the most preferred usage for the control.
                 // While the order in the WIN32 capabiliy strutures is the opposite:
                 // Here the preferred usage is the last aliased usage in the sequence.
-                if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_none() {
-                    first_delimiter_node = main_item_list.get(0).copied();
-                    append_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
-                        &mut main_item_list);
-                    append_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0),
-                        &mut main_item_list);
-                    delimiter_close_node = main_item_list.get(0).copied();
+                if link_collection_nodes[collection_node_idx].is_alias() && !first_delimiter_node {
+                    first_delimiter_node = true;
+                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0));
+                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0));
                 } else {
-                    append_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0),
-                        &mut main_item_list);
+                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0));
                     actual_coll_level += 1;
                 }
             } else if coll_number_of_direct_childs[collection_node_idx] > 1 &&
-                coll_last_written_child[collection_node_idx] != coll_child_order[&(collection_node_idx, (coll_number_of_direct_childs[collection_node_idx] - 1) as u16)] as i32 {
+                coll_last_written_child[collection_node_idx] != coll_child_order[&(collection_node_idx, coll_number_of_direct_childs[collection_node_idx] - 1)] as i32 {
 
                 // Collection has child collections, and this is not the first child
                 let mut next_child = 1;
@@ -242,45 +231,25 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                 coll_last_written_child[collection_node_idx] = coll_child_order[&(collection_node_idx, next_child)] as i32;
                 collection_node_idx = coll_child_order[&(collection_node_idx, next_child)];
 
-                if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_none() {
+                if link_collection_nodes[collection_node_idx].is_alias() && !first_delimiter_node {
                     // Alliased Collection (First node in link_collection_nodes -> Last entry in report descriptor output)
-                    first_delimiter_node = main_item_list.get(0).copied();
-                    append_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
-                        &mut main_item_list);
-                    append_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0),
-                        &mut main_item_list);
-                    delimiter_close_node = main_item_list.get(0).copied();
-                } else if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_some() {
-                    insert_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
-                        main_item_list.iter().position(|n| *n == first_delimiter_node.unwrap()).unwrap(),
-                        &mut main_item_list);
-                } else if !link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node.is_some() {
-                    insert_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0),
-                        main_item_list.iter().position(|n| *n == first_delimiter_node.unwrap()).unwrap(),
-                        &mut main_item_list);
-                    insert_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0),
-                        main_item_list.iter().position(|n| *n == first_delimiter_node.unwrap()).unwrap(),
-                        &mut main_item_list);
-                    first_delimiter_node = None;
-                    main_item_list = main_item_list.into_iter().skip_while(|n| *n != delimiter_close_node.unwrap()).collect();
-                    delimiter_close_node = None;
+                    first_delimiter_node = true;
+                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0));
+                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0));
+                } else if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node {
+                    main_item_list.insert(1, MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0));
+                } else if !link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node {
+                    main_item_list.insert(1, MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0));
+                    main_item_list.insert(1, MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0));
+                    first_delimiter_node = false;
                 }
                 if !link_collection_nodes[collection_node_idx].is_alias() {
-                    append_main_item_node(
-                        MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0),
-                        &mut main_item_list);
+                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0));
                     actual_coll_level += 1;
                 }
             } else {
                 actual_coll_level -= 1;
-                append_main_item_node(
-                    MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::CollectionEnd, 0),
-                    &mut main_item_list);
+                main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::CollectionEnd, 0));
                 collection_node_idx = link_collection_nodes[collection_node_idx].parent as usize;
             }
         }
@@ -292,8 +261,7 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
     // ****************************************************************
     for rt_idx in ReportType::values() {
         // Add all value caps to node list
-        let mut first_delimiter_node = None;
-        let mut delimiter_close_node = None;
+        let mut first_delimiter_node = false;
         let caps_info = header.caps_info[rt_idx as usize];
         for caps_idx in caps_info.first_cap..caps_info.last_cap {
             let caps = caps_list[caps_idx as usize];
@@ -323,54 +291,27 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                     .rposition(|node| node.collection_index == index)
                     .unwrap();
             }
-            let mut list_node = search_list(first_bit as i32, rt_idx.into(), caps.report_id, coll_begin, &main_item_list);
+            let list_node = 1 + search_list(first_bit as i32, rt_idx.into(), caps.report_id, coll_begin, &main_item_list);
 
             // In a HID Report Descriptor, the first usage declared is the most preferred usage for the control.
             // While the order in the WIN32 capabiliy strutures is the opposite:
             // Here the preferred usage is the last aliased usage in the sequence.
 
-            if caps.is_alias() && first_delimiter_node.is_none() {
+            if caps.is_alias() && !first_delimiter_node {
                 // Alliased Usage (First node in pp_data->caps -> Last entry in report descriptor output)
-                first_delimiter_node = main_item_list.get(list_node).copied();
-                insert_main_item_node(
-                    MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
-                    list_node,
-                    &mut main_item_list
-                );
-                insert_main_item_node(
-                    MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterClose, caps.report_id),
-                    list_node,
-                    &mut main_item_list
-                );
-                delimiter_close_node = main_item_list.get(list_node).copied();
-            } else if caps.is_alias() && first_delimiter_node.is_some() {
-                insert_main_item_node(
-                    MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
-                    list_node,
-                &mut main_item_list
-                );
-            } else if !caps.is_alias() && first_delimiter_node.is_some() {
+                first_delimiter_node = true;
+                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id));
+                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterClose, caps.report_id));
+            } else if caps.is_alias() && first_delimiter_node {
+                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id));
+            } else if !caps.is_alias() && first_delimiter_node {
                 // Alliased Collection (Last node in pp_data->caps -> First entry in report descriptor output)
-                insert_main_item_node(
-                    MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id),
-                    list_node,
-                    &mut main_item_list
-                );
-                insert_main_item_node(
-                    MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterOpen, caps.report_id),
-                    list_node,
-                    &mut main_item_list
-                );
-                first_delimiter_node = None;
-                list_node = main_item_list.iter().position(|n| *n == delimiter_close_node.unwrap()).unwrap();
-                delimiter_close_node = None;
+                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id));
+                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterOpen, caps.report_id));
+                first_delimiter_node = false;
             }
             if !caps.is_alias() {
-                insert_main_item_node(
-                    MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, rt_idx.into(), caps.report_id),
-                    list_node,
-                    &mut main_item_list
-                );
+                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, rt_idx.into(), caps.report_id));
             }
         }
     }
@@ -390,22 +331,18 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
         let mut index = 0;
         while index < main_item_list.len() {
             let current = main_item_list[index];
-            if let Ok(_) = ReportType::try_from(current.main_item_type) {
+            if ReportType::try_from(current.main_item_type).is_ok() {
                 let lbp = last_bit_position
                     .get(&(current.main_item_type, current.report_id))
-                    .cloned()
+                    .copied()
                     .unwrap_or(-1);
                 let lrip = last_report_item_lookup
                     .get(&(current.main_item_type, current.report_id))
-                    .cloned();
-                if lbp + 1 != current.first_bit as i32 && lrip.as_ref()
-                    .is_some_and(|i| main_item_list[*i].first_bit != current.first_bit) {
+                    .copied();
+                if lbp + 1 != current.first_bit as i32 && lrip.is_some_and(|i|
+                        main_item_list[i].first_bit != current.first_bit) {
                     let list_node = search_list(lbp, current.main_item_type, current.report_id, lrip.unwrap(), &main_item_list);
-                    insert_main_item_node(
-                        MainItemNode::new((lbp + 1) as u16, current.first_bit - 1, ItemNodeType::Padding, -1, 0, current.main_item_type, current.report_id),
-                        list_node,
-                        &mut main_item_list
-                    );
+                    main_item_list.insert(list_node + 1, MainItemNode::new((lbp + 1) as u16, current.first_bit - 1, ItemNodeType::Padding, -1, 0, current.main_item_type, current.report_id));
                     index += 1;
                 }
                 last_bit_position.insert((current.main_item_type, current.report_id), current.last_bit as i32);
@@ -420,41 +357,18 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                     let padding = 8 - ((*lbp + 1) % 8);
                     if padding < 8 {
                         // Insert padding item after item referenced in last_report_item_lookup
-                        let mut lrip = last_report_item_lookup.get_mut(&(rt_idx.into(), report_idx)).cloned();
-                        insert_main_item_node(
-                            MainItemNode::new((lbp + 1) as u16, (lbp + padding) as u16, ItemNodeType::Padding, -1, 0, rt_idx.into(), report_idx),
-                            lrip.unwrap(),
-                            &mut main_item_list
-                        );
-                        if let Some(lrip) = lrip {
-                            last_report_item_lookup.insert((rt_idx.into(), report_idx), lrip);
-                        }
+                        let lrip = *last_report_item_lookup.get(&(rt_idx.into(), report_idx)).unwrap();
+                        main_item_list.insert(lrip + 1, MainItemNode::new((lbp + 1) as u16, (lbp + padding) as u16, ItemNodeType::Padding, -1, 0, rt_idx.into(), report_idx));
+                        last_report_item_lookup.insert((rt_idx.into(), report_idx), lrip);
                     }
                 }
             }
         }
     }
-    //std::iter::successors(main_item_list, |current| current.next.get())
-    //    .map(|node| node.unlinked_copy())
-    //    .collect()
     main_item_list
 }
 
-//fn to_vec(main_item_list: &Option<Rc<MainItemNode>>) -> Vec<Rc<MainItemNode>> {
-//    std::iter::successors(main_item_list.clone(), |current| current.next.get())
-//        .collect()
-//}
-
-fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, start: usize, list: &Vec<MainItemNode>) -> usize {
-    //to_vec(&Some(list))
-    //    .iter()
-    //    .peaking()
-    //    .find(|(_, next)| next.is_some_and(|next| next.main_item_type == MainItems::Collection ||
-    //        next.main_item_type == MainItems::CollectionEnd ||
-    //        (next.last_bit as i32 >= search_bit && next.report_id == report_id && next.main_item_type == main_item_type) ))
-    //    .map(|(current, _)| current)
-    //    .unwrap()
-    //    .clone()
+fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, start: usize, list: &[MainItemNode]) -> usize {
     list[start..]
         .iter()
         .peaking()
@@ -462,33 +376,7 @@ fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, start:
            next.main_item_type == MainItems::CollectionEnd ||
            (next.last_bit as i32 >= search_bit && next.report_id == report_id && next.main_item_type == main_item_type) ))
         .unwrap() + start
-
 }
-
-fn insert_main_item_node(node: MainItemNode, current: usize, list: &mut Vec<MainItemNode>) {
-    list.insert(current + 1, node);
-}
-
-fn append_main_item_node(node: MainItemNode, list: &mut Vec<MainItemNode>) {
-    //let rc = Rc::new(node);
-    //match list {
-    //    None => *list = Some(rc.clone()),
-    //    Some(ref current) => {
-    //        let mut current = current.clone();
-    //        loop {
-    //            match current.next.get() {
-    //                None => {
-    //                    current.next.set(rc.clone());
-    //                    break;
-    //                },
-    //                Some(next) => current = next
-    //            }
-    //        }
-    //    }
-    //}
-    list.push(node);
-}
-
 
 
 trait PeakIterExt<T: Iterator> {

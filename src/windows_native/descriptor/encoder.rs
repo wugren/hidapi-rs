@@ -112,16 +112,15 @@ pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], li
                 if inhibit_write_of_usage {
                     // Inhibit only once after Delimiter - Reset flag
                     inhibit_write_of_usage = false;
+                } else if caps.is_range() {
+                    // Write range from "Usage Minimum" to "Usage Maximum"
+                    writer.write(Items::LocalUsageMinimum, caps.range().usage_min)?;
+                    writer.write(Items::LocalUsageMaximum, caps.range().usage_max)?;
                 } else {
-                    if caps.is_range() {
-                        // Write range from "Usage Minimum" to "Usage Maximum"
-                        writer.write(Items::LocalUsageMinimum, caps.range().usage_min)?;
-                        writer.write(Items::LocalUsageMaximum, caps.range().usage_max)?;
-                    } else {
-                        // Write single "Usage"
-                        writer.write(Items::LocalUsage, caps.not_range().usage)?;
-                    }
+                    // Write single "Usage"
+                    writer.write(Items::LocalUsage, caps.not_range().usage)?;
                 }
+
 
                 if caps.is_desginator_range() {
                     // Write physical descriptor indices range from "Designator Minimum" to "Designator Maximum"
@@ -245,16 +244,15 @@ pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], li
                 if inhibit_write_of_usage {
                     // Inhibit only once after Delimiter - Reset flag
                     inhibit_write_of_usage = false;
+                } else if caps.is_range() {
+                    // Write usage range from "Usage Minimum" to "Usage Maximum"
+                    writer.write(Items::LocalUsageMinimum, caps.range().usage_min)?;
+                    writer.write(Items::LocalUsageMaximum, caps.range().usage_max)?;
                 } else {
-                    if caps.is_range() {
-                        // Write usage range from "Usage Minimum" to "Usage Maximum"
-                        writer.write(Items::LocalUsageMinimum, caps.range().usage_min)?;
-                        writer.write(Items::LocalUsageMaximum, caps.range().usage_max)?;
-                    } else {
-                        // Write single "Usage"
-                        writer.write(Items::LocalUsage, caps.not_range().usage)?;
-                    }
+                    // Write single "Usage"
+                    writer.write(Items::LocalUsage, caps.not_range().usage)?;
                 }
+
 
                 if caps.is_desginator_range() {
                     // Write physical descriptor indices range from "Designator Minimum" to "Designator Maximum"
@@ -284,25 +282,26 @@ pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], li
                     caps.report_count = caps.range().data_index_max - caps.range().data_index_min + 1;
                 }
 
+                #[allow(clippy::blocks_in_if_conditions)]
                 if next.is_some_and(|next| {
                     let next_caps = caps_list[next.caps_index as usize];
                     next.main_item_type == rt_idx &&
-                        next.node_type == ItemNodeType::Cap &&
-                        !next_caps.is_button_cap() &&
-                        !caps.is_range() &&
-                        !next_caps.is_range() &&
-                        next_caps.usage_page == caps.usage_page &&
-                        next_caps.not_button().logical_min == caps.not_button().logical_min &&
-                        next_caps.not_button().logical_max == caps.not_button().logical_max &&
-                        next_caps.not_button().physical_min == caps.not_button().physical_min &&
-                        next_caps.not_button().physical_max == caps.not_button().physical_max &&
-                        next_caps.units_exp == caps.units_exp &&
-                        next_caps.units == caps.units &&
-                        next_caps.report_size == caps.report_size &&
-                        next_caps.report_id == caps.report_id &&
-                        next_caps.bit_field == caps.bit_field &&
-                        next_caps.report_count == 1 &&
-                        caps.report_count == 1
+                    next.node_type == ItemNodeType::Cap &&
+                    !next_caps.is_button_cap() &&
+                    !caps.is_range() &&
+                    !next_caps.is_range() &&
+                    next_caps.usage_page == caps.usage_page &&
+                    next_caps.not_button().logical_min == caps.not_button().logical_min &&
+                    next_caps.not_button().logical_max == caps.not_button().logical_max &&
+                    next_caps.not_button().physical_min == caps.not_button().physical_min &&
+                    next_caps.not_button().physical_max == caps.not_button().physical_max &&
+                    next_caps.units_exp == caps.units_exp &&
+                    next_caps.units == caps.units &&
+                    next_caps.report_size == caps.report_size &&
+                    next_caps.report_id == caps.report_id &&
+                    next_caps.bit_field == caps.bit_field &&
+                    next_caps.report_count == 1 &&
+                    caps.report_count == 1
                 }) {
                     // Skip global items until any of them changes, than use ReportCount item to write the count of identical report fields
                     report_count += 1;
