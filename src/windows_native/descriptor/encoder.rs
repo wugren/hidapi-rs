@@ -284,7 +284,10 @@ pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], li
 
                 #[allow(clippy::blocks_in_if_conditions)]
                 if next.is_some_and(|next| {
-                    let next_caps = caps_list[next.caps_index as usize];
+                    let next_caps = caps_list
+                        .get(next.caps_index as usize)
+                        .copied()
+                        .unwrap_or_else(|| unsafe {std::mem::zeroed()});
                     next.main_item_type == rt_idx &&
                     next.node_type == ItemNodeType::Cap &&
                     !next_caps.is_button_cap() &&
