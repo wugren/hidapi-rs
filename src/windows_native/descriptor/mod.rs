@@ -17,6 +17,10 @@ use crate::windows_native::hid::PreparsedData;
 
 
 pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
+    unsafe { get_descriptor_ptr(pp_data.as_ptr()) }
+}
+
+unsafe fn get_descriptor_ptr(pp_data: *const c_void) -> WinResult<Vec<u8>> {
     let (header, caps_list, link_collection_nodes) = extract_structures(pp_data)?;
 
     let list = reconstruct_descriptor(header, caps_list, link_collection_nodes);
@@ -24,26 +28,25 @@ pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
     encode_descriptor(&list, caps_list, link_collection_nodes)
 }
 
-fn extract_structures(pp_data: &PreparsedData) -> WinResult<(HidpPreparsedData, &[Caps], &[LinkCollectionNode])> {
-    unsafe {
-        let header: *const HidpPreparsedData = pp_data.as_ptr() as _;
 
-        // Check if MagicKey is correct, to ensure that pp_data points to an valid preparse data structure
-        ensure!(&(*header).magic_key == b"HidP KDR", Err(WinError::InvalidPreparsedData));
+unsafe fn extract_structures<'a>(pp_data: *const c_void) -> WinResult<(HidpPreparsedData, &'a [Caps], &'a [LinkCollectionNode])> {
+    let header: *const HidpPreparsedData = pp_data as _;
 
-        let caps_ptr: *const Caps = header.offset(1) as _;
-        let caps_len = ReportType::values()
-            .into_iter()
-            .map(|r| (*header).caps_info[r as usize].last_cap)
-            .max()
-            .unwrap() as usize;
+    // Check if MagicKey is correct, to ensure that pp_data points to an valid preparse data structure
+    ensure!(&(*header).magic_key == b"HidP KDR", Err(WinError::InvalidPreparsedData));
 
-        let link_ptr: *const LinkCollectionNode = ((caps_ptr as *const c_void)
-            .offset((*header).first_byte_of_link_collection_array as isize)) as _;
-        let link_len = (*header).number_link_collection_nodes as usize;
+    let caps_ptr: *const Caps = header.offset(1) as _;
+    let caps_len = ReportType::values()
+        .into_iter()
+        .map(|r| (*header).caps_info[r as usize].last_cap)
+        .max()
+        .unwrap() as usize;
 
-        Ok((*header, slice::from_raw_parts(caps_ptr, caps_len), slice::from_raw_parts(link_ptr, link_len)))
-    }
+    let link_ptr: *const LinkCollectionNode = ((caps_ptr as *const c_void)
+        .offset((*header).first_byte_of_link_collection_array as isize)) as _;
+    let link_len = (*header).number_link_collection_nodes as usize;
+
+    Ok((*header, slice::from_raw_parts(caps_ptr, caps_len), slice::from_raw_parts(link_ptr, link_len)))
 }
 
 fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_collection_nodes: &[LinkCollectionNode]) -> Vec<MainItemNode> {
