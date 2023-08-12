@@ -362,7 +362,10 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                         // Insert padding item after item referenced in last_report_item_lookup
                         let lrip = *last_report_item_lookup.get(&(rt_idx.into(), report_idx)).unwrap();
                         main_item_list.insert(lrip + 1, MainItemNode::new((lbp + 1) as u16, (lbp + padding) as u16, ItemNodeType::Padding, -1, 0, rt_idx.into(), report_idx));
-                        last_report_item_lookup.insert((rt_idx.into(), report_idx), lrip);
+                        last_report_item_lookup
+                            .values_mut()
+                            .filter(|i| **i > lrip)
+                            .for_each(|i| *i += 1);
                     }
                 }
             }
