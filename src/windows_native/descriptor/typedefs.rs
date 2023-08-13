@@ -1,6 +1,10 @@
 use std::mem::size_of;
 use crate::windows_native::descriptor::types::BitRange;
 
+// Reverse engineered typedefs for the internal structure of the preparsed data taken from
+// https://github.com/libusb/hidapi/blob/master/windows/hidapi_descriptor_reconstruct.h
+// https://github.com/libusb/hidapi/pull/306
+
 #[macro_export]
 macro_rules! const_assert {
     ($x:expr $(,)?) => {
@@ -149,7 +153,7 @@ impl Caps {
     pub fn is_string_range(&self) -> bool {
         self.flags & (1 << 6) != 0
     }
-    pub fn is_desginator_range(&self) -> bool {
+    pub fn is_designator_range(&self) -> bool {
         self.flags & (1 << 7) != 0
     }
 

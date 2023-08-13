@@ -8,6 +8,7 @@ mod device_info;
 mod string;
 mod dev_node;
 mod descriptor;
+mod utils;
 
 use std::{
     ffi::CStr,

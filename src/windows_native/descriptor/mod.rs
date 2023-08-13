@@ -14,6 +14,7 @@ use crate::windows_native::descriptor::typedefs::{Caps, HidpPreparsedData, LinkC
 use crate::windows_native::descriptor::types::{BitRange, ItemNodeType, MainItemNode, MainItems, ReportType};
 use crate::windows_native::error::{WinError, WinResult};
 use crate::windows_native::hid::PreparsedData;
+use crate::windows_native::utils::PeakIterExt;
 
 
 pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
@@ -382,34 +383,4 @@ fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, start:
            next.main_item_type == MainItems::CollectionEnd ||
            (next.last_bit as i32 >= search_bit && next.report_id == report_id && next.main_item_type == main_item_type) ))
         .unwrap() + start
-}
-
-
-trait PeakIterExt<T: Iterator> {
-    fn peaking(self) -> PeakingIter<T>;
-}
-
-impl<T: Iterator> PeakIterExt<T> for T {
-    fn peaking(mut self) -> PeakingIter<T> {
-        PeakingIter {
-            next: self.next(),
-            inner: self,
-        }
-    }
-}
-
-struct PeakingIter<T: Iterator> {
-    inner: T,
-    next: Option<T::Item>
-}
-
-impl<T: Copy, I: Iterator<Item=T>> Iterator for PeakingIter<I> {
-    type Item = (I::Item, Option<I::Item>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let current = self.next.take();
-        self.next = self.inner.next();
-        current
-            .map(|v| (v, self.next))
-    }
 }

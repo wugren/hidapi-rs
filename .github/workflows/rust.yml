@@ -102,7 +102,7 @@ jobs:
       - name: Build
         run: cargo build --no-default-features --features windows-native --verbose
       - name: Run tests
-        run: cargo test --no-default-features --features windows-native--verbose
+        run: cargo test --no-default-features --features windows-native --verbose
 
   build-macos:
     runs-on: macos-latest

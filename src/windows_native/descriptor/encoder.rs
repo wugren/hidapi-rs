@@ -1,7 +1,7 @@
-use crate::windows_native::descriptor::PeakIterExt;
 use crate::windows_native::descriptor::typedefs::{Caps, LinkCollectionNode};
 use crate::windows_native::descriptor::types::{ItemNodeType, Items, MainItemNode, MainItems};
 use crate::windows_native::error::{WinError, WinResult};
+use crate::windows_native::utils::PeakIterExt;
 
 pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], link_collection_nodes: &[LinkCollectionNode]) -> WinResult<Vec<u8>> {
     // ***********************************
@@ -122,7 +122,7 @@ pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], li
                 }
 
 
-                if caps.is_desginator_range() {
+                if caps.is_designator_range() {
                     // Write physical descriptor indices range from "Designator Minimum" to "Designator Maximum"
                     writer.write(Items::LocalDesignatorMinimum, caps.range().designator_min)?;
                     writer.write(Items::LocalDesignatorMaximum, caps.range().designator_max)?;
@@ -254,7 +254,7 @@ pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], li
                 }
 
 
-                if caps.is_desginator_range() {
+                if caps.is_designator_range() {
                     // Write physical descriptor indices range from "Designator Minimum" to "Designator Maximum"
                     writer.write(Items::LocalDesignatorMinimum, caps.range().designator_min)?;
                     writer.write(Items::LocalDesignatorMaximum, caps.range().designator_max)?;
