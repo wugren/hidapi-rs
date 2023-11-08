@@ -19,10 +19,8 @@ const STRING_BUF_LEN: usize = 128;
 pub struct HidApiBackend;
 
 impl HidApiBackend {
-    pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
-        let mut device_vector = Vec::with_capacity(8);
-
-        let enumeration = unsafe { ffi::hid_enumerate(0, 0) };
+    pub fn populate_hid_device_info_vector(device_vector: &mut Vec<DeviceInfo>, vid: u16, pid: u16) -> HidResult<()> {
+        let enumeration = unsafe { ffi::hid_enumerate(vid, pid) };
         {
             let mut current_device = enumeration;
 
@@ -36,7 +34,7 @@ impl HidApiBackend {
             unsafe { ffi::hid_free_enumeration(enumeration) };
         }
 
-        Ok(device_vector)
+        Ok(())
     }
 
     pub fn open(vid: u16, pid: u16) -> HidResult<HidDevice> {
