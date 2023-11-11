@@ -214,7 +214,8 @@ impl HidApi {
     /// Indexes devices that match the given VID and PID filters.
     /// 0 indicates no filter.
     pub fn add_devices(&mut self, vid: u16, pid: u16) -> HidResult<()> {
-        HidApiBackend::populate_hid_device_info_vector(&mut self.device_list, vid, pid)
+        self.device_list.append(&mut HidApiBackend::get_hid_device_info_vector(vid, pid)?);
+        Ok(())
     }
 
     /// Returns iterator containing information about attached HID devices
