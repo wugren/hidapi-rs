@@ -173,9 +173,11 @@ impl HidApi {
     pub fn new() -> HidResult<Self> {
         lazy_init(true)?;
 
-        let device_list = HidApiBackend::get_hid_device_info_vector()?;
-
-        Ok(HidApi { device_list })
+        let mut api = HidApi {
+            device_list: Vec::with_capacity(8),
+        };
+        api.add_devices(0, 0)?;
+        Ok(api)
     }
 
     /// Create a new hidapi context, in "do not enumerate" mode.
@@ -196,13 +198,28 @@ impl HidApi {
 
     /// Refresh devices list and information about them (to access them use
     /// `device_list()` method)
+    /// Identical to `reset_devices()` followed by `add_devices(0, 0)`.
     pub fn refresh_devices(&mut self) -> HidResult<()> {
-        let device_list = HidApiBackend::get_hid_device_info_vector()?;
-        self.device_list = device_list;
+        self.reset_devices()?;
+        self.add_devices(0, 0)?;
         Ok(())
     }
 
-    /// Returns iterator containing information about attached HID devices.
+    /// Reset devices list. Intended to be used with the `add_devices` method.
+    pub fn reset_devices(&mut self) -> HidResult<()> {
+        self.device_list.clear();
+        Ok(())
+    }
+
+    /// Indexes devices that match the given VID and PID filters.
+    /// 0 indicates no filter.
+    pub fn add_devices(&mut self, vid: u16, pid: u16) -> HidResult<()> {
+        self.device_list.append(&mut HidApiBackend::get_hid_device_info_vector(vid, pid)?);
+        Ok(())
+    }
+
+    /// Returns iterator containing information about attached HID devices
+    /// that have been indexed, either by `refresh_devices` or `add_devices`.
     pub fn device_list(&self) -> impl Iterator<Item = &DeviceInfo> {
         self.device_list.iter()
     }
