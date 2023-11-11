@@ -48,9 +48,9 @@ impl HidApiBackend {
 
         let devices = scan
             .filter_map(|device| device_to_hid_device_info(&device))
+            .flatten()
             .filter(|device| vid == 0 || device.vendor_id == vid)
             .filter(|device| pid == 0 || device.product_id == pid)
-            .flatten()
             .collect::<Vec<_>>();
 
         Ok(devices)
