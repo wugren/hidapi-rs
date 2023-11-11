@@ -33,7 +33,7 @@ const BUS_SPI: u16 = 0x1C;
 pub struct HidApiBackend;
 
 impl HidApiBackend {
-    pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
+    pub fn get_hid_device_info_vector(vid: u16, pid: u16) -> HidResult<Vec<DeviceInfo>> {
         // The C version assumes these can't fail, and they should only fail in case
         // of memory allocation issues, at which point maybe we should panic
         let mut enumerator = match udev::Enumerator::new() {
@@ -48,6 +48,8 @@ impl HidApiBackend {
 
         let devices = scan
             .filter_map(|device| device_to_hid_device_info(&device))
+            .filter(|device| vid == 0 || device.vendor_id == vid)
+            .filter(|device| pid == 0 || device.product_id == pid)
             .flatten()
             .collect::<Vec<_>>();
 
@@ -411,7 +413,7 @@ unsafe impl Send for HidDevice {}
 // API for the library to call us, or for internal uses
 impl HidDevice {
     pub(crate) fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<Self> {
-        for device in HidApiBackend::get_hid_device_info_vector()?
+        for device in HidApiBackend::get_hid_device_info_vector(0, 0)?
             .iter()
             .filter(|device| device.vendor_id == vid && device.product_id == pid)
         {
