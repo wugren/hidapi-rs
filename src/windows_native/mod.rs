@@ -47,8 +47,8 @@ macro_rules! ensure {
 
 pub struct HidApiBackend;
 impl HidApiBackend {
-    pub fn get_hid_device_info_vector() -> HidResult<Vec<DeviceInfo>> {
-        Ok(enumerate_devices(0, 0)?)
+    pub fn get_hid_device_info_vector(vid: u16, pid: u16) -> HidResult<Vec<DeviceInfo>> {
+        Ok(enumerate_devices(vid, pid)?)
     }
 
     pub fn open(vid: u16, pid: u16) -> HidResult<HidDevice> {
