@@ -58,10 +58,6 @@
 //! [`HidDevice`] handles can access the same physical device. For backward compatibility this is
 //! an opt-in that can be enabled with the `macos-shared-device` feature flag.
 
-extern crate libc;
-#[cfg(all(feature = "linux-native", target_os = "linux"))]
-extern crate nix;
-
 #[cfg(target_os = "windows")]
 use windows_sys::core::GUID;
 
