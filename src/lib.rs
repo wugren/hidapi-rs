@@ -58,28 +58,8 @@
 //! [`HidDevice`] handles can access the same physical device. For backward compatibility this is
 //! an opt-in that can be enabled with the `macos-shared-device` feature flag.
 
-#[cfg(target_os = "windows")]
-use windows_sys::core::GUID;
-
 mod error;
 mod ffi;
-
-#[cfg(hidapi)]
-mod hidapi;
-
-#[cfg(all(feature = "linux-native", target_os = "linux"))]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "linux-native", target_os = "linux"))))]
-mod linux_native;
-#[cfg(target_os = "macos")]
-#[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
-mod macos;
-#[cfg(target_os = "windows")]
-#[cfg_attr(docsrs, doc(cfg(target_os = "windows")))]
-mod windows;
-
-#[cfg(feature = "windows-native")]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "windows-native", target_os = "windows"))))]
-mod windows_native;
 
 use libc::wchar_t;
 use std::ffi::CStr;
@@ -87,15 +67,59 @@ use std::ffi::CString;
 use std::fmt;
 use std::fmt::Debug;
 use std::sync::Mutex;
+use cfg_if::cfg_if;
 
 pub use error::HidError;
 
-#[cfg(hidapi)]
-use crate::hidapi::HidApiBackend;
-#[cfg(all(feature = "linux-native", target_os = "linux"))]
-use linux_native::HidApiBackend;
-#[cfg(all(feature = "windows-native", target_os = "windows"))]
-use windows_native::HidApiBackend;
+cfg_if! {
+    if #[cfg(all(feature = "linux-native", target_os = "linux"))] {
+        //#[cfg_attr(docsrs, doc(cfg(all(feature = "linux-native", target_os = "linux"))))]
+        mod linux_native;
+        use linux_native::HidApiBackend;
+    } else if #[cfg(all(feature = "windows-native", target_os = "windows"))] {
+        //#[cfg_attr(docsrs, doc(cfg(all(feature = "windows-native", target_os = "windows"))))]
+        mod windows_native;
+        use windows_native::HidApiBackend;
+    } else if #[cfg(hidapi)] {
+        mod hidapi;
+        use hidapi::HidApiBackend;
+    } else {
+        compile_error!("No backend selected");
+    }
+}
+
+// Automatically implement the top trait
+cfg_if! {
+    if #[cfg(target_os = "windows")] {
+        #[cfg_attr(docsrs, doc(cfg(target_os = "windows")))]
+        mod windows;
+        use windows::GUID;
+        /// A trait with the extra methods that are available on Windows
+        trait HidDeviceBackendWindows {
+            /// Get the container ID for a HID device
+            fn get_container_id(&self) -> HidResult<GUID>;
+        }
+        trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendWindows + Send {}
+        impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendWindows + Send {}
+    } else if #[cfg(target_os = "macos")] {
+        #[cfg_attr(docsrs, doc(cfg(target_os = "macos")))]
+        mod macos;
+        /// A trait with the extra methods that are available on macOS
+        trait HidDeviceBackendMacos {
+            /// Get the location ID for a [`HidDevice`] device.
+            fn get_location_id(&self) -> HidResult<u32>;
+
+            /// Check if the device was opened in exclusive mode.
+            fn is_open_exclusive(&self) -> HidResult<bool>;
+        }
+        trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendMacos + Send {}
+        impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendMacos + Send {}
+    } else {
+        trait HidDeviceBackend: HidDeviceBackendBase + Send {}
+        impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + Send {}
+    }
+}
+
 
 pub type HidResult<T> = Result<T, HidError>;
 pub const MAX_REPORT_DESCRIPTOR_SIZE: usize = 4096;
@@ -462,42 +486,6 @@ trait HidDeviceBackendBase {
         })
     }
 }
-
-/// A trait with the extra methods that are available on macOS
-#[cfg(target_os = "macos")]
-trait HidDeviceBackendMacos {
-    /// Get the location ID for a [`HidDevice`] device.
-    fn get_location_id(&self) -> HidResult<u32>;
-
-    /// Check if the device was opened in exclusive mode.
-    fn is_open_exclusive(&self) -> HidResult<bool>;
-}
-
-/// A trait with the extra methods that are available on macOS
-#[cfg(target_os = "windows")]
-trait HidDeviceBackendWindows {
-    /// Get the container ID for a HID device
-    fn get_container_id(&self) -> HidResult<GUID>;
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-trait HidDeviceBackend: HidDeviceBackendBase + Send {}
-#[cfg(target_os = "macos")]
-trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendMacos + Send {}
-#[cfg(target_os = "windows")]
-trait HidDeviceBackend: HidDeviceBackendBase + HidDeviceBackendWindows + Send {}
-
-/// Automatically implement the top trait
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + Send {}
-
-/// Automatically implement the top trait
-#[cfg(target_os = "macos")]
-impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendMacos + Send {}
-
-/// Automatically implement the top trait
-#[cfg(target_os = "windows")]
-impl<T> HidDeviceBackend for T where T: HidDeviceBackendBase + HidDeviceBackendWindows + Send {}
 
 pub struct HidDevice {
     inner: Box<dyn HidDeviceBackend>,

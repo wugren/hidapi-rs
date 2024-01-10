@@ -6,7 +6,7 @@ use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_
 use windows_sys::Win32::System::IO::{GetOverlappedResultEx, OVERLAPPED};
 use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
-use crate::{BusType, ensure};
+use crate::BusType;
 use super::error::{WinError, WinResult};
 
 #[allow(clippy::missing_safety_doc)]

@@ -8,7 +8,6 @@ mod tests;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::slice;
-use crate::ensure;
 use encoder::encode_descriptor;
 use typedefs::{Caps, HidpPreparsedData, LinkCollectionNode};
 use types::{BitRange, ItemNodeType, MainItemNode, MainItems, ReportType};

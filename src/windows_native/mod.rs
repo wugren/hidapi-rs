@@ -1,4 +1,12 @@
-//! The implementation which uses the C library to perform operations
+//! The implementation which directly uses the win32 api to perform operations
+
+macro_rules! ensure {
+    ($cond:expr, $result:expr) => {
+        if !($cond) {
+            return $result;
+        }
+    };
+}
 
 mod types;
 mod error;
@@ -34,16 +42,6 @@ use string::{U16Str, U16String};
 use types::{Handle, Overlapped};
 
 const STRING_BUF_LEN: usize = 128;
-
-#[macro_export]
-macro_rules! ensure {
-    ($cond:expr, $result:expr) => {
-        if !($cond) {
-            return $result;
-        }
-    };
-}
-
 
 pub struct HidApiBackend;
 impl HidApiBackend {

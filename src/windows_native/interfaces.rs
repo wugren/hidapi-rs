@@ -1,7 +1,6 @@
 use std::ptr::{null, null_mut};
 use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CR_BUFFER_SMALL, CR_SUCCESS};
-use crate::ensure;
 use super::error::{check_config, WinError, WinResult};
 use super::hid::get_interface_guid;
 use super::string::{U16Str, U16StringList};

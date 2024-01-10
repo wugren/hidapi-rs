@@ -1,4 +1,4 @@
-use windows_sys::core::GUID;
+pub use windows_sys::core::GUID;
 use crate::{HidDevice, HidResult};
 
 impl HidDevice {
