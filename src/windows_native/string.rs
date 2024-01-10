@@ -7,7 +7,7 @@ use std::str::Utf8Error;
 use windows_sys::core::PCWSTR;
 use windows_sys::Win32::Devices::Properties::{DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPTYPE};
 use crate::WcharString;
-use crate::windows_native::types::DeviceProperty;
+use super::types::DeviceProperty;
 
 #[repr(transparent)]
 pub struct U16Str([u16]);

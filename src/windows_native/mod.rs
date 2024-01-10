@@ -24,14 +24,14 @@ use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE
 use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile};
 use windows_sys::Win32::System::IO::{CancelIo, DeviceIoControl};
 use windows_sys::Win32::System::Threading::ResetEvent;
-use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
-use crate::windows_native::dev_node::DevNode;
-use crate::windows_native::device_info::get_device_info;
-use crate::windows_native::error::{check_boolean, Win32Error, WinError, WinResult};
-use crate::windows_native::hid::{get_hid_attributes, PreparsedData};
-use crate::windows_native::interfaces::Interface;
-use crate::windows_native::string::{U16Str, U16String};
-use crate::windows_native::types::{Handle, Overlapped};
+use super::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
+use dev_node::DevNode;
+use device_info::get_device_info;
+use error::{check_boolean, Win32Error, WinError, WinResult};
+use hid::{get_hid_attributes, PreparsedData};
+use interfaces::Interface;
+use string::{U16Str, U16String};
+use types::{Handle, Overlapped};
 
 const STRING_BUF_LEN: usize = 128;
 

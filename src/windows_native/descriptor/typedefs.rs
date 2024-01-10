@@ -1,5 +1,5 @@
 use std::mem::size_of;
-use crate::windows_native::descriptor::types::BitRange;
+use super::types::BitRange;
 
 // Reverse engineered typedefs for the internal structure of the preparsed data taken from
 // https://github.com/libusb/hidapi/blob/master/windows/hidapi_descriptor_reconstruct.h

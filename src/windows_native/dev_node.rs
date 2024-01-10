@@ -1,9 +1,9 @@
 use std::ptr::null_mut;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
 use crate::ensure;
-use crate::windows_native::error::{check_config, WinError, WinResult};
-use crate::windows_native::string::U16Str;
-use crate::windows_native::types::{DeviceProperty, PropertyKey};
+use super::error::{check_config, WinError, WinResult};
+use super::string::U16Str;
+use super::types::{DeviceProperty, PropertyKey};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]

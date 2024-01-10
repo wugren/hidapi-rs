@@ -9,12 +9,12 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::slice;
 use crate::ensure;
-use crate::windows_native::descriptor::encoder::encode_descriptor;
-use crate::windows_native::descriptor::typedefs::{Caps, HidpPreparsedData, LinkCollectionNode};
-use crate::windows_native::descriptor::types::{BitRange, ItemNodeType, MainItemNode, MainItems, ReportType};
-use crate::windows_native::error::{WinError, WinResult};
-use crate::windows_native::hid::PreparsedData;
-use crate::windows_native::utils::PeakIterExt;
+use encoder::encode_descriptor;
+use typedefs::{Caps, HidpPreparsedData, LinkCollectionNode};
+use types::{BitRange, ItemNodeType, MainItemNode, MainItems, ReportType};
+use super::error::{WinError, WinResult};
+use super::hid::PreparsedData;
+use super::utils::PeakIterExt;
 
 
 pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {

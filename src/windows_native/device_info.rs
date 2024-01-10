@@ -5,12 +5,12 @@ use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_CompatibleIds, DEVP
 use windows_sys::Win32::Foundation::{BOOLEAN, HANDLE};
 use windows_sys::Win32::Storage::EnhancedStorage::{PKEY_DeviceInterface_Bluetooth_DeviceAddress, PKEY_DeviceInterface_Bluetooth_Manufacturer, PKEY_DeviceInterface_Bluetooth_ModelNumber};
 use crate::{BusType, DeviceInfo, WcharString};
-use crate::windows_native::dev_node::DevNode;
-use crate::windows_native::error::WinResult;
-use crate::windows_native::hid::{get_hid_attributes, PreparsedData};
-use crate::windows_native::interfaces::Interface;
-use crate::windows_native::string::{U16Str, U16String, U16StringList};
-use crate::windows_native::types::{Handle, InternalBusType};
+use super::dev_node::DevNode;
+use super::error::WinResult;
+use super::hid::{get_hid_attributes, PreparsedData};
+use super::interfaces::Interface;
+use super::string::{U16Str, U16String, U16StringList};
+use super::types::{Handle, InternalBusType};
 
 fn read_string(func: unsafe extern "system" fn (HANDLE, *mut c_void, u32) -> BOOLEAN, handle: &Handle) -> WcharString {
     //Return empty string on failure to match the c implementation

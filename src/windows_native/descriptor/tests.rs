@@ -1,5 +1,5 @@
 use std::fs::read_to_string;
-use crate::windows_native::descriptor::get_descriptor_ptr;
+use super::get_descriptor_ptr;
 
 #[test]
 fn test_01() {

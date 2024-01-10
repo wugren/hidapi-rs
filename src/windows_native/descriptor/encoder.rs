@@ -1,7 +1,7 @@
-use crate::windows_native::descriptor::typedefs::{Caps, LinkCollectionNode};
-use crate::windows_native::descriptor::types::{ItemNodeType, Items, MainItemNode, MainItems};
-use crate::windows_native::error::{WinError, WinResult};
-use crate::windows_native::utils::PeakIterExt;
+use super::typedefs::{Caps, LinkCollectionNode};
+use super::types::{ItemNodeType, Items, MainItemNode, MainItems};
+use super::super::error::{WinError, WinResult};
+use super::super::utils::PeakIterExt;
 
 pub fn encode_descriptor(main_item_list: &[MainItemNode], caps_list: &[Caps], link_collection_nodes: &[LinkCollectionNode]) -> WinResult<Vec<u8>> {
     // ***********************************
