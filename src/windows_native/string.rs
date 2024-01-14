@@ -1,3 +1,5 @@
+use crate::windows_native::types::DeviceProperty;
+use crate::WcharString;
 use std::ffi::CStr;
 use std::fmt::{Debug, Formatter};
 use std::iter::once;
@@ -5,15 +7,14 @@ use std::mem::size_of;
 use std::ops::{Deref, DerefMut};
 use std::str::Utf8Error;
 use windows_sys::core::PCWSTR;
-use windows_sys::Win32::Devices::Properties::{DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST, DEVPROPTYPE};
-use crate::WcharString;
-use crate::windows_native::types::DeviceProperty;
+use windows_sys::Win32::Devices::Properties::{
+    DEVPROPTYPE, DEVPROP_TYPE_STRING, DEVPROP_TYPE_STRING_LIST,
+};
 
 #[repr(transparent)]
 pub struct U16Str([u16]);
 
 impl U16Str {
-
     unsafe fn from_slice_unsafe(slice: &[u16]) -> &Self {
         let ptr: *const [u16] = slice;
         &*(ptr as *const Self)
@@ -25,27 +26,37 @@ impl U16Str {
     }
 
     pub fn from_slice(slice: &[u16]) -> &Self {
-        assert!(slice.last().is_some_and(is_null), "Slice is not null terminated");
-        debug_assert_eq!(slice.iter().filter(|c| is_null(c)).count(), 1, "Found null character in the middle");
+        assert!(
+            slice.last().is_some_and(is_null),
+            "Slice is not null terminated"
+        );
+        debug_assert_eq!(
+            slice.iter().filter(|c| is_null(c)).count(),
+            1,
+            "Found null character in the middle"
+        );
         unsafe { Self::from_slice_unsafe(slice) }
     }
 
     pub fn from_slice_mut(slice: &mut [u16]) -> &mut Self {
-        assert!(slice.last().is_some_and(is_null), "Slice is not null terminated");
-        debug_assert_eq!(slice.iter().filter(|c| is_null(c)).count(), 1, "Found null character in the middle");
+        assert!(
+            slice.last().is_some_and(is_null),
+            "Slice is not null terminated"
+        );
+        debug_assert_eq!(
+            slice.iter().filter(|c| is_null(c)).count(),
+            1,
+            "Found null character in the middle"
+        );
         unsafe { Self::from_slice_mut_unsafe(slice) }
     }
 
-    pub fn from_slice_list(slice: &[u16]) -> impl Iterator<Item=&U16Str> {
-        slice
-            .split_inclusive(is_null)
-            .map(Self::from_slice)
+    pub fn from_slice_list(slice: &[u16]) -> impl Iterator<Item = &U16Str> {
+        slice.split_inclusive(is_null).map(Self::from_slice)
     }
 
-    pub fn from_slice_list_mut(slice: &mut [u16]) -> impl Iterator<Item=&mut U16Str> {
-        slice
-            .split_inclusive_mut(is_null)
-            .map(Self::from_slice_mut)
+    pub fn from_slice_list_mut(slice: &mut [u16]) -> impl Iterator<Item = &mut U16Str> {
+        slice.split_inclusive_mut(is_null).map(Self::from_slice_mut)
     }
 
     pub fn as_ptr(&self) -> PCWSTR {
@@ -76,19 +87,18 @@ impl U16Str {
     }
 
     pub fn find_index(&self, pattern: &str) -> Option<usize> {
-        self
-            .as_slice()
+        self.as_slice()
             .windows(pattern.encode_utf16().count())
             .enumerate()
-            .filter(|(_, ss)| ss
-                .iter()
-                .copied()
-                .zip(pattern.encode_utf16())
-                .all(|(l, r)| l == r))
+            .filter(|(_, ss)| {
+                ss.iter()
+                    .copied()
+                    .zip(pattern.encode_utf16())
+                    .all(|(l, r)| l == r)
+            })
             .map(|(i, _)| i)
             .next()
     }
-
 }
 
 impl ToString for U16Str {
@@ -140,11 +150,9 @@ impl TryFrom<&CStr> for U16String {
     type Error = Utf8Error;
 
     fn try_from(value: &CStr) -> Result<Self, Self::Error> {
-        Ok(Self(value
-            .to_str()?
-            .encode_utf16()
-            .chain(once(0))
-            .collect()))
+        Ok(Self(
+            value.to_str()?.encode_utf16().chain(once(0)).collect(),
+        ))
     }
 }
 
@@ -167,8 +175,15 @@ unsafe impl DeviceProperty for U16String {
     }
 
     fn validate(&self) {
-        assert!(self.0.last().is_some_and(is_null), "Slice is not null terminated");
-        debug_assert_eq!(self.0.iter().filter(|c| is_null(c)).count(), 1, "Found null character in the middle");
+        assert!(
+            self.0.last().is_some_and(is_null),
+            "Slice is not null terminated"
+        );
+        debug_assert_eq!(
+            self.0.iter().filter(|c| is_null(c)).count(),
+            1,
+            "Found null character in the middle"
+        );
     }
 }
 
@@ -187,15 +202,18 @@ unsafe impl DeviceProperty for U16StringList {
     }
 
     fn validate(&self) {
-        assert!(self.0.last().is_some_and(is_null), "Slice is not null terminated");
+        assert!(
+            self.0.last().is_some_and(is_null),
+            "Slice is not null terminated"
+        );
     }
 }
 
 impl U16StringList {
-    pub fn iter(&self) -> impl Iterator<Item=&U16Str> {
+    pub fn iter(&self) -> impl Iterator<Item = &U16Str> {
         U16Str::from_slice_list(self.0.as_slice())
     }
-    pub fn iter_mut(&mut self) -> impl Iterator<Item=&mut U16Str> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut U16Str> {
         U16Str::from_slice_list_mut(self.0.as_mut_slice())
     }
 }

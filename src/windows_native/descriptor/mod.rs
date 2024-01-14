@@ -1,21 +1,21 @@
-mod typedefs;
-mod types;
 mod encoder;
 #[cfg(test)]
 mod tests;
+mod typedefs;
+mod types;
 
-
-use std::collections::HashMap;
-use std::ffi::c_void;
-use std::slice;
 use crate::ensure;
 use crate::windows_native::descriptor::encoder::encode_descriptor;
 use crate::windows_native::descriptor::typedefs::{Caps, HidpPreparsedData, LinkCollectionNode};
-use crate::windows_native::descriptor::types::{BitRange, ItemNodeType, MainItemNode, MainItems, ReportType};
+use crate::windows_native::descriptor::types::{
+    BitRange, ItemNodeType, MainItemNode, MainItems, ReportType,
+};
 use crate::windows_native::error::{WinError, WinResult};
 use crate::windows_native::hid::PreparsedData;
 use crate::windows_native::utils::PeakIterExt;
-
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::slice;
 
 pub fn get_descriptor(pp_data: &PreparsedData) -> WinResult<Vec<u8>> {
     unsafe { get_descriptor_ptr(pp_data.as_ptr()) }
@@ -29,12 +29,16 @@ unsafe fn get_descriptor_ptr(pp_data: *const c_void) -> WinResult<Vec<u8>> {
     encode_descriptor(&list, caps_list, link_collection_nodes)
 }
 
-
-unsafe fn extract_structures<'a>(pp_data: *const c_void) -> WinResult<(HidpPreparsedData, &'a [Caps], &'a [LinkCollectionNode])> {
+unsafe fn extract_structures<'a>(
+    pp_data: *const c_void,
+) -> WinResult<(HidpPreparsedData, &'a [Caps], &'a [LinkCollectionNode])> {
     let header: *const HidpPreparsedData = pp_data as _;
 
     // Check if MagicKey is correct, to ensure that pp_data points to an valid preparse data structure
-    ensure!(&(*header).magic_key == b"HidP KDR", Err(WinError::InvalidPreparsedData));
+    ensure!(
+        &(*header).magic_key == b"HidP KDR",
+        Err(WinError::InvalidPreparsedData)
+    );
 
     let caps_ptr: *const Caps = header.offset(1) as _;
     let caps_len = ReportType::values()
@@ -44,13 +48,22 @@ unsafe fn extract_structures<'a>(pp_data: *const c_void) -> WinResult<(HidpPrepa
         .unwrap() as usize;
 
     let link_ptr: *const LinkCollectionNode = ((caps_ptr as *const c_void)
-        .offset((*header).first_byte_of_link_collection_array as isize)) as _;
+        .offset((*header).first_byte_of_link_collection_array as isize))
+        as _;
     let link_len = (*header).number_link_collection_nodes as usize;
 
-    Ok((*header, slice::from_raw_parts(caps_ptr, caps_len), slice::from_raw_parts(link_ptr, link_len)))
+    Ok((
+        *header,
+        slice::from_raw_parts(caps_ptr, caps_len),
+        slice::from_raw_parts(link_ptr, link_len),
+    ))
 }
 
-fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_collection_nodes: &[LinkCollectionNode]) -> Vec<MainItemNode> {
+fn reconstruct_descriptor(
+    header: HidpPreparsedData,
+    caps_list: &[Caps],
+    link_collection_nodes: &[LinkCollectionNode],
+) -> Vec<MainItemNode> {
     // ****************************************************************************************************************************
     // Create lookup tables for the bit range of each report per collection (position of first bit and last bit in each collection)
     // coll_bit_range[COLLECTION_INDEX][REPORT_ID][INPUT/OUTPUT/FEATURE]
@@ -112,7 +125,10 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                 while child_idx != 0 {
                     for reportid_idx in 0..=255 {
                         for rt_idx in ReportType::values() {
-                            if let Some(child) = coll_bit_range.get(&(child_idx, reportid_idx, rt_idx)).copied() {
+                            if let Some(child) = coll_bit_range
+                                .get(&(child_idx, reportid_idx, rt_idx))
+                                .copied()
+                            {
                                 coll_bit_range
                                     .entry((collection_node_idx, reportid_idx, rt_idx))
                                     .and_modify(|r| *r = r.merge(child))
@@ -136,15 +152,19 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
         let mut actual_coll_level = 0;
         let mut collection_node_idx = 0;
         while actual_coll_level >= 0 {
-            if coll_number_of_direct_childs[collection_node_idx] != 0 &&
-                !coll_parsed_flag[link_collection_nodes[collection_node_idx].first_child as usize] {
-                coll_parsed_flag[link_collection_nodes[collection_node_idx].first_child as usize] = true;
+            if coll_number_of_direct_childs[collection_node_idx] != 0
+                && !coll_parsed_flag
+                    [link_collection_nodes[collection_node_idx].first_child as usize]
+            {
+                coll_parsed_flag[link_collection_nodes[collection_node_idx].first_child as usize] =
+                    true;
 
                 {
                     // Create list of child collection indices
                     // sorted reverse to the order returned to HidP_GetLinkCollectionNodeschild
                     // which seems to match teh original order, as long as no bit position needs to be considered
-                    let mut child_idx = link_collection_nodes[collection_node_idx].first_child as usize;
+                    let mut child_idx =
+                        link_collection_nodes[collection_node_idx].first_child as usize;
                     let mut child_count = coll_number_of_direct_childs[collection_node_idx] - 1;
                     coll_child_order.insert((collection_node_idx, child_count), child_idx);
                     while link_collection_nodes[child_idx].next_sibling != 0 {
@@ -170,26 +190,35 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                                 let swap = coll_bit_range
                                     .get(&(prev_coll_idx, report_idx, rt_idx))
                                     .map(|prev| prev.first_bit)
-                                    .zip(coll_bit_range
-                                        .get(&(cur_coll_idx, report_idx, rt_idx))
-                                        .map(|prev| prev.first_bit))
+                                    .zip(
+                                        coll_bit_range
+                                            .get(&(cur_coll_idx, report_idx, rt_idx))
+                                            .map(|prev| prev.first_bit),
+                                    )
                                     .map_or(false, |(prev, cur)| prev > cur);
                                 if swap {
-                                    coll_child_order.insert((collection_node_idx, (child_idx - 1)), cur_coll_idx);
-                                    coll_child_order.insert((collection_node_idx, child_idx), prev_coll_idx);
+                                    coll_child_order.insert(
+                                        (collection_node_idx, (child_idx - 1)),
+                                        cur_coll_idx,
+                                    );
+                                    coll_child_order
+                                        .insert((collection_node_idx, child_idx), prev_coll_idx);
                                 }
                             }
                         }
                     }
                 }
                 actual_coll_level += 1;
-                collection_node_idx = link_collection_nodes[collection_node_idx].first_child as usize;
+                collection_node_idx =
+                    link_collection_nodes[collection_node_idx].first_child as usize;
             } else if link_collection_nodes[collection_node_idx].next_sibling != 0 {
-                collection_node_idx = link_collection_nodes[collection_node_idx].next_sibling as usize;
+                collection_node_idx =
+                    link_collection_nodes[collection_node_idx].next_sibling as usize;
             } else {
                 actual_coll_level -= 1;
                 if actual_coll_level >= 0 {
-                    collection_node_idx = link_collection_nodes[collection_node_idx].parent as usize;
+                    collection_node_idx =
+                        link_collection_nodes[collection_node_idx].parent as usize;
                 }
             }
         }
@@ -200,17 +229,28 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
     // ***************************************************************************************
     let mut main_item_list: Vec<MainItemNode> = Vec::new();
     {
-        let mut coll_last_written_child  = vec![-1i32; link_collection_nodes.len()];
+        let mut coll_last_written_child = vec![-1i32; link_collection_nodes.len()];
 
         let mut actual_coll_level = 0;
         let mut collection_node_idx = 0;
         let mut first_delimiter_node = false;
 
-        main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0));
+        main_item_list.push(MainItemNode::new(
+            0,
+            0,
+            ItemNodeType::Collection,
+            0,
+            collection_node_idx,
+            MainItems::Collection,
+            0,
+        ));
         while actual_coll_level >= 0 {
-            if coll_number_of_direct_childs[collection_node_idx] != 0 && coll_last_written_child[collection_node_idx] == -1 {
+            if coll_number_of_direct_childs[collection_node_idx] != 0
+                && coll_last_written_child[collection_node_idx] == -1
+            {
                 // Collection has child collections, but none is written to the list yet
-                coll_last_written_child[collection_node_idx] = coll_child_order[&(collection_node_idx, 0)] as i32;
+                coll_last_written_child[collection_node_idx] =
+                    coll_child_order[&(collection_node_idx, 0)] as i32;
                 collection_node_idx = coll_child_order[&(collection_node_idx, 0)];
 
                 // In a HID Report Descriptor, the first usage declared is the most preferred usage for the control.
@@ -218,42 +258,142 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                 // Here the preferred usage is the last aliased usage in the sequence.
                 if link_collection_nodes[collection_node_idx].is_alias() && !first_delimiter_node {
                     first_delimiter_node = true;
-                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0));
-                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0));
+                    main_item_list.push(MainItemNode::new(
+                        0,
+                        0,
+                        ItemNodeType::Collection,
+                        0,
+                        collection_node_idx,
+                        MainItems::DelimiterUsage,
+                        0,
+                    ));
+                    main_item_list.push(MainItemNode::new(
+                        0,
+                        0,
+                        ItemNodeType::Collection,
+                        0,
+                        collection_node_idx,
+                        MainItems::DelimiterClose,
+                        0,
+                    ));
                 } else {
-                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0));
+                    main_item_list.push(MainItemNode::new(
+                        0,
+                        0,
+                        ItemNodeType::Collection,
+                        0,
+                        collection_node_idx,
+                        MainItems::Collection,
+                        0,
+                    ));
                     actual_coll_level += 1;
                 }
-            } else if coll_number_of_direct_childs[collection_node_idx] > 1 &&
-                coll_last_written_child[collection_node_idx] != coll_child_order[&(collection_node_idx, coll_number_of_direct_childs[collection_node_idx] - 1)] as i32 {
-
+            } else if coll_number_of_direct_childs[collection_node_idx] > 1
+                && coll_last_written_child[collection_node_idx]
+                    != coll_child_order[&(
+                        collection_node_idx,
+                        coll_number_of_direct_childs[collection_node_idx] - 1,
+                    )] as i32
+            {
                 // Collection has child collections, and this is not the first child
                 let mut next_child = 1;
-                while coll_last_written_child[collection_node_idx] != coll_child_order[&(collection_node_idx, (next_child - 1))] as i32 {
+                while coll_last_written_child[collection_node_idx]
+                    != coll_child_order[&(collection_node_idx, (next_child - 1))] as i32
+                {
                     next_child += 1;
                 }
-                coll_last_written_child[collection_node_idx] = coll_child_order[&(collection_node_idx, next_child)] as i32;
+                coll_last_written_child[collection_node_idx] =
+                    coll_child_order[&(collection_node_idx, next_child)] as i32;
                 collection_node_idx = coll_child_order[&(collection_node_idx, next_child)];
 
                 if link_collection_nodes[collection_node_idx].is_alias() && !first_delimiter_node {
                     // Alliased Collection (First node in link_collection_nodes -> Last entry in report descriptor output)
                     first_delimiter_node = true;
-                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0));
-                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0));
-                } else if link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node {
-                    main_item_list.insert(1, MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0));
-                } else if !link_collection_nodes[collection_node_idx].is_alias() && first_delimiter_node {
-                    main_item_list.insert(1, MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterUsage, 0));
-                    main_item_list.insert(1, MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::DelimiterClose, 0));
+                    main_item_list.push(MainItemNode::new(
+                        0,
+                        0,
+                        ItemNodeType::Collection,
+                        0,
+                        collection_node_idx,
+                        MainItems::DelimiterUsage,
+                        0,
+                    ));
+                    main_item_list.push(MainItemNode::new(
+                        0,
+                        0,
+                        ItemNodeType::Collection,
+                        0,
+                        collection_node_idx,
+                        MainItems::DelimiterClose,
+                        0,
+                    ));
+                } else if link_collection_nodes[collection_node_idx].is_alias()
+                    && first_delimiter_node
+                {
+                    main_item_list.insert(
+                        1,
+                        MainItemNode::new(
+                            0,
+                            0,
+                            ItemNodeType::Collection,
+                            0,
+                            collection_node_idx,
+                            MainItems::DelimiterUsage,
+                            0,
+                        ),
+                    );
+                } else if !link_collection_nodes[collection_node_idx].is_alias()
+                    && first_delimiter_node
+                {
+                    main_item_list.insert(
+                        1,
+                        MainItemNode::new(
+                            0,
+                            0,
+                            ItemNodeType::Collection,
+                            0,
+                            collection_node_idx,
+                            MainItems::DelimiterUsage,
+                            0,
+                        ),
+                    );
+                    main_item_list.insert(
+                        1,
+                        MainItemNode::new(
+                            0,
+                            0,
+                            ItemNodeType::Collection,
+                            0,
+                            collection_node_idx,
+                            MainItems::DelimiterClose,
+                            0,
+                        ),
+                    );
                     first_delimiter_node = false;
                 }
                 if !link_collection_nodes[collection_node_idx].is_alias() {
-                    main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::Collection, 0));
+                    main_item_list.push(MainItemNode::new(
+                        0,
+                        0,
+                        ItemNodeType::Collection,
+                        0,
+                        collection_node_idx,
+                        MainItems::Collection,
+                        0,
+                    ));
                     actual_coll_level += 1;
                 }
             } else {
                 actual_coll_level -= 1;
-                main_item_list.push(MainItemNode::new(0, 0, ItemNodeType::Collection, 0, collection_node_idx, MainItems::CollectionEnd, 0));
+                main_item_list.push(MainItemNode::new(
+                    0,
+                    0,
+                    ItemNodeType::Collection,
+                    0,
+                    collection_node_idx,
+                    MainItems::CollectionEnd,
+                    0,
+                ));
                 collection_node_idx = link_collection_nodes[collection_node_idx].parent as usize;
             }
         }
@@ -295,7 +435,13 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                     .rposition(|node| node.collection_index == index)
                     .unwrap();
             }
-            let list_node = 1 + search_list(first_bit as i32, rt_idx.into(), caps.report_id, coll_begin, &main_item_list);
+            let list_node = 1 + search_list(
+                first_bit as i32,
+                rt_idx.into(),
+                caps.report_id,
+                coll_begin,
+                &main_item_list,
+            );
 
             // In a HID Report Descriptor, the first usage declared is the most preferred usage for the control.
             // While the order in the WIN32 capabiliy strutures is the opposite:
@@ -304,18 +450,84 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
             if caps.is_alias() && !first_delimiter_node {
                 // Alliased Usage (First node in pp_data->caps -> Last entry in report descriptor output)
                 first_delimiter_node = true;
-                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id));
-                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterClose, caps.report_id));
+                main_item_list.insert(
+                    list_node,
+                    MainItemNode::new(
+                        first_bit,
+                        last_bit,
+                        ItemNodeType::Cap,
+                        caps_idx as i32,
+                        caps.link_collection as usize,
+                        MainItems::DelimiterUsage,
+                        caps.report_id,
+                    ),
+                );
+                main_item_list.insert(
+                    list_node,
+                    MainItemNode::new(
+                        first_bit,
+                        last_bit,
+                        ItemNodeType::Cap,
+                        caps_idx as i32,
+                        caps.link_collection as usize,
+                        MainItems::DelimiterClose,
+                        caps.report_id,
+                    ),
+                );
             } else if caps.is_alias() && first_delimiter_node {
-                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id));
+                main_item_list.insert(
+                    list_node,
+                    MainItemNode::new(
+                        first_bit,
+                        last_bit,
+                        ItemNodeType::Cap,
+                        caps_idx as i32,
+                        caps.link_collection as usize,
+                        MainItems::DelimiterUsage,
+                        caps.report_id,
+                    ),
+                );
             } else if !caps.is_alias() && first_delimiter_node {
                 // Alliased Collection (Last node in pp_data->caps -> First entry in report descriptor output)
-                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterUsage, caps.report_id));
-                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, MainItems::DelimiterOpen, caps.report_id));
+                main_item_list.insert(
+                    list_node,
+                    MainItemNode::new(
+                        first_bit,
+                        last_bit,
+                        ItemNodeType::Cap,
+                        caps_idx as i32,
+                        caps.link_collection as usize,
+                        MainItems::DelimiterUsage,
+                        caps.report_id,
+                    ),
+                );
+                main_item_list.insert(
+                    list_node,
+                    MainItemNode::new(
+                        first_bit,
+                        last_bit,
+                        ItemNodeType::Cap,
+                        caps_idx as i32,
+                        caps.link_collection as usize,
+                        MainItems::DelimiterOpen,
+                        caps.report_id,
+                    ),
+                );
                 first_delimiter_node = false;
             }
             if !caps.is_alias() {
-                main_item_list.insert(list_node, MainItemNode::new(first_bit, last_bit, ItemNodeType::Cap, caps_idx as i32, caps.link_collection as usize, rt_idx.into(), caps.report_id));
+                main_item_list.insert(
+                    list_node,
+                    MainItemNode::new(
+                        first_bit,
+                        last_bit,
+                        ItemNodeType::Cap,
+                        caps_idx as i32,
+                        caps.link_collection as usize,
+                        rt_idx.into(),
+                        caps.report_id,
+                    ),
+                );
             }
         }
     }
@@ -343,13 +555,34 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                 let lrip = last_report_item_lookup
                     .get(&(current.main_item_type, current.report_id))
                     .copied();
-                if lbp + 1 != current.first_bit as i32 && lrip.is_some_and(|i|
-                        main_item_list[i].first_bit != current.first_bit) {
-                    let list_node = search_list(lbp, current.main_item_type, current.report_id, lrip.unwrap(), &main_item_list);
-                    main_item_list.insert(list_node + 1, MainItemNode::new((lbp + 1) as u16, current.first_bit - 1, ItemNodeType::Padding, -1, 0, current.main_item_type, current.report_id));
+                if lbp + 1 != current.first_bit as i32
+                    && lrip.is_some_and(|i| main_item_list[i].first_bit != current.first_bit)
+                {
+                    let list_node = search_list(
+                        lbp,
+                        current.main_item_type,
+                        current.report_id,
+                        lrip.unwrap(),
+                        &main_item_list,
+                    );
+                    main_item_list.insert(
+                        list_node + 1,
+                        MainItemNode::new(
+                            (lbp + 1) as u16,
+                            current.first_bit - 1,
+                            ItemNodeType::Padding,
+                            -1,
+                            0,
+                            current.main_item_type,
+                            current.report_id,
+                        ),
+                    );
                     index += 1;
                 }
-                last_bit_position.insert((current.main_item_type, current.report_id), current.last_bit as i32);
+                last_bit_position.insert(
+                    (current.main_item_type, current.report_id),
+                    current.last_bit as i32,
+                );
                 last_report_item_lookup.insert((current.main_item_type, current.report_id), index);
             }
             index += 1;
@@ -361,8 +594,21 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
                     let padding = 8 - ((*lbp + 1) % 8);
                     if padding < 8 {
                         // Insert padding item after item referenced in last_report_item_lookup
-                        let lrip = *last_report_item_lookup.get(&(rt_idx.into(), report_idx)).unwrap();
-                        main_item_list.insert(lrip + 1, MainItemNode::new((lbp + 1) as u16, (lbp + padding) as u16, ItemNodeType::Padding, -1, 0, rt_idx.into(), report_idx));
+                        let lrip = *last_report_item_lookup
+                            .get(&(rt_idx.into(), report_idx))
+                            .unwrap();
+                        main_item_list.insert(
+                            lrip + 1,
+                            MainItemNode::new(
+                                (lbp + 1) as u16,
+                                (lbp + padding) as u16,
+                                ItemNodeType::Padding,
+                                -1,
+                                0,
+                                rt_idx.into(),
+                                report_idx,
+                            ),
+                        );
                         last_report_item_lookup
                             .values_mut()
                             .filter(|i| **i > lrip)
@@ -375,12 +621,25 @@ fn reconstruct_descriptor(header: HidpPreparsedData, caps_list: &[Caps], link_co
     main_item_list
 }
 
-fn search_list(search_bit: i32, main_item_type: MainItems, report_id: u8, start: usize, list: &[MainItemNode]) -> usize {
+fn search_list(
+    search_bit: i32,
+    main_item_type: MainItems,
+    report_id: u8,
+    start: usize,
+    list: &[MainItemNode],
+) -> usize {
     list[start..]
         .iter()
         .peaking()
-        .position(|(_, next)| next.is_some_and(|next| next.main_item_type == MainItems::Collection ||
-           next.main_item_type == MainItems::CollectionEnd ||
-           (next.last_bit as i32 >= search_bit && next.report_id == report_id && next.main_item_type == main_item_type) ))
-        .unwrap() + start
+        .position(|(_, next)| {
+            next.is_some_and(|next| {
+                next.main_item_type == MainItems::Collection
+                    || next.main_item_type == MainItems::CollectionEnd
+                    || (next.last_bit as i32 >= search_bit
+                        && next.report_id == report_id
+                        && next.main_item_type == main_item_type)
+            })
+        })
+        .unwrap()
+        + start
 }

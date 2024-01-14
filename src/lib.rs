@@ -82,7 +82,10 @@ mod macos;
 mod windows;
 
 #[cfg(feature = "windows-native")]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "windows-native", target_os = "windows"))))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "windows-native", target_os = "windows")))
+)]
 mod windows_native;
 
 use libc::wchar_t;
@@ -214,7 +217,8 @@ impl HidApi {
     /// Indexes devices that match the given VID and PID filters.
     /// 0 indicates no filter.
     pub fn add_devices(&mut self, vid: u16, pid: u16) -> HidResult<()> {
-        self.device_list.append(&mut HidApiBackend::get_hid_device_info_vector(vid, pid)?);
+        self.device_list
+            .append(&mut HidApiBackend::get_hid_device_info_vector(vid, pid)?);
         Ok(())
     }
 

@@ -110,8 +110,8 @@ pub mod macos {
 // For documentation look at the corresponding C header file hidapi_winapi.h
 #[cfg(target_os = "windows")]
 pub mod windows {
-    use windows_sys::core::GUID;
     use super::*;
+    use windows_sys::core::GUID;
 
     extern "C" {
         pub fn hid_winapi_get_container_id(
