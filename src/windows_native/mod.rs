@@ -1,30 +1,22 @@
 //! The implementation which uses the C library to perform operations
 
-mod types;
-mod error;
-mod interfaces;
-mod hid;
-mod device_info;
-mod string;
-mod dev_node;
 mod descriptor;
+mod dev_node;
+mod device_info;
+mod error;
+mod hid;
+mod interfaces;
+mod string;
+mod types;
 mod utils;
 
+use std::cell::{Cell, RefCell};
+use std::ptr::{null, null_mut};
 use std::{
     ffi::CStr,
     fmt::{self, Debug},
 };
-use std::cell::{Cell, RefCell};
-use std::ptr::{null, null_mut};
 
-use windows_sys::core::GUID;
-use windows_sys::Win32::Devices::HumanInterfaceDevice::{HidD_GetIndexedString, HidD_SetFeature, HidD_SetNumInputBuffers};
-use windows_sys::Win32::Devices::Properties::{DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId};
-use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE, TRUE};
-use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING, ReadFile, WriteFile};
-use windows_sys::Win32::System::IO::{CancelIo, DeviceIoControl};
-use windows_sys::Win32::System::Threading::ResetEvent;
-use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
 use crate::windows_native::dev_node::DevNode;
 use crate::windows_native::device_info::get_device_info;
 use crate::windows_native::error::{check_boolean, Win32Error, WinError, WinResult};
@@ -32,6 +24,21 @@ use crate::windows_native::hid::{get_hid_attributes, PreparsedData};
 use crate::windows_native::interfaces::Interface;
 use crate::windows_native::string::{U16Str, U16String};
 use crate::windows_native::types::{Handle, Overlapped};
+use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
+use windows_sys::core::GUID;
+use windows_sys::Win32::Devices::HumanInterfaceDevice::{
+    HidD_GetIndexedString, HidD_SetFeature, HidD_SetNumInputBuffers,
+};
+use windows_sys::Win32::Devices::Properties::{
+    DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId,
+};
+use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE, TRUE};
+use windows_sys::Win32::Storage::FileSystem::{
+    CreateFileW, ReadFile, WriteFile, FILE_FLAG_OVERLAPPED, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    OPEN_EXISTING,
+};
+use windows_sys::Win32::System::Threading::ResetEvent;
+use windows_sys::Win32::System::IO::{CancelIo, DeviceIoControl};
 
 const STRING_BUF_LEN: usize = 128;
 
@@ -43,7 +50,6 @@ macro_rules! ensure {
         }
     };
 }
-
 
 pub struct HidApiBackend;
 impl HidApiBackend {
@@ -62,7 +68,6 @@ impl HidApiBackend {
     pub fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         open_path(device_path)
     }
-
 }
 
 /// Object for accessing HID device
@@ -73,16 +78,15 @@ pub struct HidDevice {
     blocking: Cell<bool>,
     read_state: RefCell<AsyncState>,
     write_state: RefCell<AsyncState>,
-    feature_state: RefCell<AsyncState>
+    feature_state: RefCell<AsyncState>,
 }
 
 struct AsyncState {
     overlapped: Box<Overlapped>,
-    buffer: Vec<u8>
+    buffer: Vec<u8>,
 }
 
 impl AsyncState {
-
     fn new(report_size: usize) -> Self {
         Self {
             overlapped: Default::default(),
@@ -95,12 +99,12 @@ impl AsyncState {
     }
 
     fn fill_buffer(&mut self, data: &[u8]) {
-        /* Make sure the right number of bytes are passed to WriteFile. Windows
-	   expects the number of bytes which are in the _longest_ report (plus
-	   one for the report number) bytes even if the data is a report
-	   which is shorter than that. Windows gives us this value in
-	   caps.OutputReportByteLength. If a user passes in fewer bytes than this,
-	   use cached temporary buffer which is the proper size. */
+        // Make sure the right number of bytes are passed to WriteFile. Windows
+        // expects the number of bytes which are in the _longest_ report (plus
+        // one for the report number) bytes even if the data is a report
+        // which is shorter than that. Windows gives us this value in
+        // caps.OutputReportByteLength. If a user passes in fewer bytes than this,
+        // use cached temporary buffer which is the proper size.
         let data_size = data.len().min(self.buffer.len());
         self.buffer[..data_size].copy_from_slice(&data[..data_size]);
         if data_size < self.buffer.len() {
@@ -115,7 +119,6 @@ impl AsyncState {
     fn buffer_ptr(&mut self) -> *mut u8 {
         self.buffer.as_mut_ptr()
     }
-
 }
 
 impl Debug for HidDevice {
@@ -125,7 +128,6 @@ impl Debug for HidDevice {
 }
 
 impl HidDeviceBackendBase for HidDevice {
-
     fn write(&self, data: &[u8]) -> HidResult<usize> {
         ensure!(!data.is_empty(), Err(HidError::InvalidZeroSizeData));
         let mut state = self.write_state.borrow_mut();
@@ -137,17 +139,19 @@ impl HidDeviceBackendBase for HidDevice {
                 state.buffer_ptr(),
                 state.buffer_len() as u32,
                 null_mut(),
-                state.overlapped.as_raw())
+                state.overlapped.as_raw(),
+            )
         };
 
         if res != TRUE {
             let err = Win32Error::last();
             ensure!(err == Win32Error::IoPending, Err(err.into()));
-            Ok(state.overlapped.get_result(&self.device_handle, Some(1000))?)
+            Ok(state
+                .overlapped
+                .get_result(&self.device_handle, Some(1000))?)
         } else {
             Ok(0)
         }
-
     }
 
     fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
@@ -170,7 +174,8 @@ impl HidDeviceBackendBase for HidDevice {
                     state.buffer_ptr() as _,
                     state.buffer_len() as u32,
                     &mut bytes_read,
-                    state.overlapped.as_raw())
+                    state.overlapped.as_raw(),
+                )
             };
             if res != TRUE {
                 let err = Win32Error::last();
@@ -186,14 +191,16 @@ impl HidDeviceBackendBase for HidDevice {
         }
 
         if io_runnig {
-            let res = state.overlapped.get_result(&self.device_handle, u32::try_from(timeout).ok());
+            let res = state
+                .overlapped
+                .get_result(&self.device_handle, u32::try_from(timeout).ok());
             bytes_read = match res {
                 Ok(written) => written as u32,
                 //There was no data this time. Return zero bytes available, but leave the Overlapped I/O running.
                 Err(WinError::WaitTimedOut) => return Ok(0),
                 Err(err) => {
                     self.read_pending.set(false);
-                    return Err(err.into())
+                    return Err(err.into());
                 }
             };
         }
@@ -201,10 +208,10 @@ impl HidDeviceBackendBase for HidDevice {
 
         let mut copy_len = 0;
         if bytes_read > 0 {
-            /* If report numbers aren't being used, but Windows sticks a report
-			   number (0x0) on the beginning of the report anyway. To make this
-			   work like the other platforms, and to make it work more like the
-			   HID spec, we'll skip over this byte. */
+            // If report numbers aren't being used, but Windows sticks a report
+            // number (0x0) on the beginning of the report anyway. To make this
+            // work like the other platforms, and to make it work more like the
+            // HID spec, we'll skip over this byte.
             if state.buffer[0] == 0x0 {
                 bytes_read -= 1;
                 copy_len = usize::min(bytes_read as usize, buf.len());
@@ -222,7 +229,13 @@ impl HidDeviceBackendBase for HidDevice {
         let mut state = self.feature_state.borrow_mut();
         state.fill_buffer(data);
 
-        check_boolean(unsafe { HidD_SetFeature(self.device_handle.as_raw(), state.buffer_ptr() as _, state.buffer_len() as u32) })?;
+        check_boolean(unsafe {
+            HidD_SetFeature(
+                self.device_handle.as_raw(),
+                state.buffer_ptr() as _,
+                state.buffer_len() as u32,
+            )
+        })?;
 
         Ok(())
     }
@@ -232,8 +245,8 @@ impl HidDeviceBackendBase for HidDevice {
     /// report data will start in `buf[1]`.
     fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
         #[allow(clippy::identity_op, clippy::double_parens)]
-        const IOCTL_HID_GET_FEATURE: u32 = ((0x0000000b) << 16) | ((0) << 14) | (((100)) << 2) | (2);
-        ensure!(!buf.is_empty(),  Err(HidError::InvalidZeroSizeData));
+        const IOCTL_HID_GET_FEATURE: u32 = ((0x0000000b) << 16) | ((0) << 14) | ((100) << 2) | (2);
+        ensure!(!buf.is_empty(), Err(HidError::InvalidZeroSizeData));
         let mut state = self.feature_state.borrow_mut();
         let mut bytes_returned = 0;
 
@@ -247,7 +260,8 @@ impl HidDeviceBackendBase for HidDevice {
                 buf.as_mut_ptr() as _,
                 buf.len() as u32,
                 &mut bytes_returned,
-                state.overlapped.as_raw())
+                state.overlapped.as_raw(),
+            )
         };
         if res != TRUE {
             let err = Win32Error::last();
@@ -282,7 +296,14 @@ impl HidDeviceBackendBase for HidDevice {
 
     fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
         let mut buf = [0u16; STRING_BUF_LEN];
-        let res = unsafe { HidD_GetIndexedString(self.device_handle.as_raw(), index as u32, buf.as_mut_ptr() as _, STRING_BUF_LEN as u32) };
+        let res = unsafe {
+            HidD_GetIndexedString(
+                self.device_handle.as_raw(),
+                index as u32,
+                buf.as_mut_ptr() as _,
+                STRING_BUF_LEN as u32,
+            )
+        };
         check_boolean(res)?;
         Ok(buf.split(|c| *c == 0).map(String::from_utf16_lossy).next())
     }
@@ -301,8 +322,8 @@ impl HidDeviceBackendBase for HidDevice {
 
 impl HidDeviceBackendWindows for HidDevice {
     fn get_container_id(&self) -> HidResult<GUID> {
-        let path = U16String::try_from(self.device_info.path())
-            .expect("device path is not valid unicode");
+        let path =
+            U16String::try_from(self.device_info.path()).expect("device path is not valid unicode");
 
         let device_id: U16String = Interface::get_property(&path, DEVPKEY_Device_InstanceId)?;
 
@@ -320,14 +341,14 @@ impl Drop for HidDevice {
     }
 }
 
-
 fn enumerate_devices(vendor_id: u16, product_id: u16) -> WinResult<Vec<DeviceInfo>> {
     Ok(Interface::get_interface_list()?
         .iter()
         .filter_map(|device_interface| {
             let device_handle = open_device(device_interface, false).ok()?;
             let attrib = get_hid_attributes(&device_handle);
-            ((vendor_id == 0 || attrib.VendorID == vendor_id) && (product_id == 0 || attrib.ProductID == product_id))
+            ((vendor_id == 0 || attrib.VendorID == vendor_id)
+                && (product_id == 0 || attrib.ProductID == product_id))
                 .then(|| get_device_info(device_interface, &device_handle))
         })
         .collect())
@@ -339,16 +360,19 @@ fn open_device(path: &U16Str, open_rw: bool) -> WinResult<Handle> {
             path.as_ptr(),
             match open_rw {
                 true => GENERIC_WRITE | GENERIC_READ,
-                false => 0
+                false => 0,
             },
             FILE_SHARE_READ | FILE_SHARE_WRITE,
             null(),
             OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED,
-            0
+            0,
         )
     };
-    ensure!(handle != INVALID_HANDLE_VALUE, Err(Win32Error::last().into()));
+    ensure!(
+        handle != INVALID_HANDLE_VALUE,
+        Err(Win32Error::last().into())
+    );
     Ok(Handle::from_raw(handle))
 }
 
@@ -362,14 +386,13 @@ fn open(vid: u16, pid: u16, sn: Option<&str>) -> HidResult<HidDevice> {
 }
 
 fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
-    let device_path = U16String::try_from(device_path)
-        .unwrap();
+    let device_path = U16String::try_from(device_path).unwrap();
     let handle = open_device(&device_path, true)
-        /* System devices, such as keyboards and mice, cannot be opened in
-		   read-write mode, because the system takes exclusive control over
-		   them.  This is to prevent keyloggers.  However, feature reports
-		   can still be sent and received.  Retry opening the device, but
-		   without read/write access. */
+        // System devices, such as keyboards and mice, cannot be opened in
+        // read-write mode, because the system takes exclusive control over
+        // them.  This is to prevent keyloggers.  However, feature reports
+        // can still be sent and received.  Retry opening the device, but
+        // without read/write access.
         .or_else(|_| open_device(&device_path, false))?;
     check_boolean(unsafe { HidD_SetNumInputBuffers(handle.as_raw(), 64) })?;
     let caps = PreparsedData::load(&handle)?.get_caps()?;
