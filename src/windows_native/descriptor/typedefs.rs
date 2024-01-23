@@ -1,5 +1,5 @@
+use crate::windows_native::descriptor::types::BitRange;
 use std::mem::size_of;
-use super::types::BitRange;
 
 // Reverse engineered typedefs for the internal structure of the preparsed data taken from
 // https://github.com/libusb/hidapi/blob/master/windows/hidapi_descriptor_reconstruct.h
@@ -9,7 +9,10 @@ use super::types::BitRange;
 macro_rules! const_assert {
     ($x:expr $(,)?) => {
         #[allow(unknown_lints)]
-        const _: [(); 0 - !{ const ASSERT: bool = $x; ASSERT } as usize] = [];
+        const _: [(); 0 - !{
+            const ASSERT: bool = $x;
+            ASSERT
+        } as usize] = [];
     };
 }
 
@@ -25,7 +28,7 @@ pub struct LinkCollectionNode {
     pub number_of_children: u16,
     pub next_sibling: u16,
     pub first_child: u16,
-    pub bits: u32
+    pub bits: u32,
 }
 
 impl LinkCollectionNode {
@@ -44,7 +47,7 @@ pub struct CapsInfo {
     pub first_cap: u16,
     pub number_of_caps: u16,
     pub last_cap: u16,
-    pub report_byte_length: u16
+    pub report_byte_length: u16,
 }
 
 const_assert!(size_of::<UnknownToken>() == 8);
@@ -53,14 +56,14 @@ const_assert!(size_of::<UnknownToken>() == 8);
 pub struct UnknownToken {
     pub token: u8,
     _reserved: [u8; 3],
-    pub bit_field: u32
+    pub bit_field: u32,
 }
 
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct Button {
     pub logical_min: i32,
-    pub logical_max: i32
+    pub logical_max: i32,
 }
 
 #[derive(Copy, Clone)]
@@ -71,14 +74,14 @@ pub struct NotButton {
     pub logical_min: i32,
     pub logical_max: i32,
     pub physical_min: i32,
-    pub physical_max: i32
+    pub physical_max: i32,
 }
 
 #[derive(Copy, Clone)]
 #[repr(C)]
 union MaybeButton {
     button: Button,
-    not_button: NotButton
+    not_button: NotButton,
 }
 
 #[derive(Copy, Clone)]
@@ -91,7 +94,7 @@ pub struct Range {
     pub designator_min: u16,
     pub designator_max: u16,
     pub data_index_min: u16,
-    pub data_index_max: u16
+    pub data_index_max: u16,
 }
 
 #[derive(Copy, Clone)]
@@ -111,9 +114,8 @@ pub struct NotRange {
 #[repr(C)]
 union MaybeRange {
     range: Range,
-    not_range: NotRange
+    not_range: NotRange,
 }
-
 
 const_assert!(size_of::<Caps>() == 104);
 #[derive(Copy, Clone)]
@@ -137,7 +139,7 @@ pub struct Caps {
     maybe_range: MaybeRange,
     maybe_button: MaybeButton,
     pub units: u32,
-    pub units_exp: u32
+    pub units_exp: u32,
 }
 
 impl Caps {
@@ -159,22 +161,22 @@ impl Caps {
 
     pub fn range(&self) -> Range {
         //Both union elements have the same size and are valid for all bit patterns
-        unsafe {self.maybe_range.range }
+        unsafe { self.maybe_range.range }
     }
 
     pub fn not_range(&self) -> NotRange {
         //Both union elements have the same size and are valid for all bit patterns
-        unsafe {self.maybe_range.not_range }
+        unsafe { self.maybe_range.not_range }
     }
 
     pub fn button(&self) -> Button {
         //Both union elements have the same size and are valid for all bit patterns
-        unsafe {self.maybe_button.button }
+        unsafe { self.maybe_button.button }
     }
 
     pub fn not_button(&self) -> NotButton {
         //Both union elements have the same size and are valid for all bit patterns
-        unsafe {self.maybe_button.not_button }
+        unsafe { self.maybe_button.not_button }
     }
 
     pub fn get_bit_range(&self) -> BitRange {
@@ -185,7 +187,6 @@ impl Caps {
             last_bit,
         }
     }
-
 }
 
 #[derive(Copy, Clone)]
@@ -197,5 +198,5 @@ pub struct HidpPreparsedData {
     _reserved: [u16; 2],
     pub caps_info: [CapsInfo; 3],
     pub first_byte_of_link_collection_array: u16,
-    pub number_link_collection_nodes: u16
+    pub number_link_collection_nodes: u16,
 }

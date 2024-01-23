@@ -1,20 +1,21 @@
+use crate::windows_native::error::{check_config, WinError, WinResult};
+use crate::windows_native::string::U16Str;
+use crate::windows_native::types::{DeviceProperty, PropertyKey};
 use std::ptr::null_mut;
-use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CR_BUFFER_SMALL, CR_SUCCESS};
-use super::error::{check_config, WinError, WinResult};
-use super::string::U16Str;
-use super::types::{DeviceProperty, PropertyKey};
+use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
+    CM_Get_DevNode_PropertyW, CM_Get_Parent, CM_Locate_DevNodeW, CM_LOCATE_DEVNODE_NORMAL,
+    CR_BUFFER_SMALL, CR_SUCCESS,
+};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DevNode(u32);
 
 impl DevNode {
-
     pub fn from_device_id(device_id: &U16Str) -> WinResult<Self> {
         let mut node = 0;
-        let cr = unsafe {
-            CM_Locate_DevNodeW(&mut node, device_id.as_ptr(), CM_LOCATE_DEVNODE_NORMAL)
-        };
+        let cr =
+            unsafe { CM_Locate_DevNodeW(&mut node, device_id.as_ptr(), CM_LOCATE_DEVNODE_NORMAL) };
         check_config(cr, CR_SUCCESS)?;
         Ok(Self(node))
     }
@@ -26,7 +27,10 @@ impl DevNode {
         Ok(Self(parent))
     }
 
-    fn get_property_size<T: DeviceProperty>(self, property_key: impl PropertyKey) -> WinResult<usize> {
+    fn get_property_size<T: DeviceProperty>(
+        self,
+        property_key: impl PropertyKey,
+    ) -> WinResult<usize> {
         let mut property_type = 0;
         let mut len = 0;
         let cr = unsafe {
@@ -36,11 +40,14 @@ impl DevNode {
                 &mut property_type,
                 null_mut(),
                 &mut len,
-                0
+                0,
             )
         };
         check_config(cr, CR_BUFFER_SMALL)?;
-        ensure!(property_type == T::TYPE, Err(WinError::WrongPropertyDataType));
+        ensure!(
+            property_type == T::TYPE,
+            Err(WinError::WrongPropertyDataType)
+        );
         Ok(len as usize)
     }
 
@@ -56,7 +63,7 @@ impl DevNode {
                 &mut property_type,
                 property.as_ptr_mut(),
                 &mut len,
-                0
+                0,
             )
         };
         check_config(cr, CR_SUCCESS)?;
@@ -64,6 +71,4 @@ impl DevNode {
         property.validate();
         Ok(property)
     }
-
 }
-

@@ -1,5 +1,5 @@
+use crate::windows_native::descriptor::get_descriptor_ptr;
 use std::fs::read_to_string;
-use super::get_descriptor_ptr;
 
 #[test]
 fn test_01() {
@@ -98,7 +98,6 @@ fn test_24() {
     execute_testcase("17CC_1130_0000_FF01");
 }
 
-
 fn execute_testcase(filename: &str) {
     let source_path = format!("./tests/pp_data/{filename}.pp_data");
     let expected_path = format!("./tests/pp_data/{filename}.expected");
@@ -110,13 +109,13 @@ fn execute_testcase(filename: &str) {
 }
 
 fn decode_hex(hex: &str) -> Vec<u8> {
-    hex
-        .lines()
-        .flat_map(|line| line
-            .split(',')
-            .map(|hex| hex.trim())
-            .filter(|hex| !hex.is_empty())
-            .map(|hex| hex.strip_prefix("0x").unwrap())
-            .map(|hex| u8::from_str_radix(hex, 16).unwrap()))
+    hex.lines()
+        .flat_map(|line| {
+            line.split(',')
+                .map(|hex| hex.trim())
+                .filter(|hex| !hex.is_empty())
+                .map(|hex| hex.strip_prefix("0x").unwrap())
+                .map(|hex| u8::from_str_radix(hex, 16).unwrap())
+        })
         .collect()
 }

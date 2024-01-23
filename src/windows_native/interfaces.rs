@@ -1,16 +1,22 @@
+use crate::windows_native::error::{check_config, WinError, WinResult};
+use crate::windows_native::hid::get_interface_guid;
+use crate::windows_native::string::{U16Str, U16StringList};
+use crate::windows_native::types::{DeviceProperty, PropertyKey};
 use std::ptr::{null, null_mut};
 use windows_sys::core::GUID;
-use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CM_Get_Device_Interface_List_SizeW, CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_PropertyW, CR_BUFFER_SMALL, CR_SUCCESS};
-use super::error::{check_config, WinError, WinResult};
-use super::hid::get_interface_guid;
-use super::string::{U16Str, U16StringList};
-use super::types::{DeviceProperty, PropertyKey};
+use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
+    CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_List_SizeW,
+    CM_Get_Device_Interface_PropertyW, CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CR_BUFFER_SMALL,
+    CR_SUCCESS,
+};
 
 pub struct Interface;
 
 impl Interface {
-
-    fn get_property_size<T: DeviceProperty>(interface: &U16Str, property_key: impl PropertyKey) -> WinResult<usize> {
+    fn get_property_size<T: DeviceProperty>(
+        interface: &U16Str,
+        property_key: impl PropertyKey,
+    ) -> WinResult<usize> {
         let mut property_type = 0;
         let mut len = 0;
         let cr = unsafe {
@@ -20,15 +26,21 @@ impl Interface {
                 &mut property_type,
                 null_mut(),
                 &mut len,
-                0
+                0,
             )
         };
         check_config(cr, CR_BUFFER_SMALL)?;
-        ensure!(property_type == T::TYPE, Err(WinError::WrongPropertyDataType));
+        ensure!(
+            property_type == T::TYPE,
+            Err(WinError::WrongPropertyDataType)
+        );
         Ok(len as usize)
     }
 
-    pub fn get_property<T: DeviceProperty>(interface: &U16Str, property_key: impl PropertyKey) -> WinResult<T> {
+    pub fn get_property<T: DeviceProperty>(
+        interface: &U16Str,
+        property_key: impl PropertyKey,
+    ) -> WinResult<T> {
         let size = Self::get_property_size::<T>(interface, property_key)?;
         let mut property = T::create_sized(size);
         let mut property_type = 0;
@@ -40,7 +52,7 @@ impl Interface {
                 &mut property_type,
                 property.as_ptr_mut(),
                 &mut len,
-                0
+                0,
             )
         };
         check_config(cr, CR_SUCCESS)?;
@@ -56,7 +68,8 @@ impl Interface {
                 &mut len,
                 &interface,
                 null(),
-                CM_GET_DEVICE_INTERFACE_LIST_PRESENT)
+                CM_GET_DEVICE_INTERFACE_LIST_PRESENT,
+            )
         };
         check_config(cr, CR_SUCCESS)?;
         Ok(len as usize)
@@ -74,7 +87,7 @@ impl Interface {
                     null(),
                     device_interface_list.as_mut_ptr(),
                     device_interface_list.len() as u32,
-                    CM_GET_DEVICE_INTERFACE_LIST_PRESENT
+                    CM_GET_DEVICE_INTERFACE_LIST_PRESENT,
                 )
             };
             if cr == CR_SUCCESS {
@@ -84,4 +97,3 @@ impl Interface {
         }
     }
 }
-

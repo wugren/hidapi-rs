@@ -1,13 +1,13 @@
+use crate::windows_native::error::{WinError, WinResult};
+use crate::BusType;
 use std::mem::{size_of, zeroed};
 use std::ptr::null;
 use windows_sys::core::GUID;
-use windows_sys::Win32::Devices::Properties::{DEVPROP_TYPE_GUID, DEVPROPKEY, DEVPROPTYPE};
+use windows_sys::Win32::Devices::Properties::{DEVPROPKEY, DEVPROPTYPE, DEVPROP_TYPE_GUID};
 use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE, TRUE};
-use windows_sys::Win32::System::IO::{GetOverlappedResultEx, OVERLAPPED};
 use windows_sys::Win32::System::Threading::{CreateEventW, INFINITE};
+use windows_sys::Win32::System::IO::{GetOverlappedResultEx, OVERLAPPED};
 use windows_sys::Win32::UI::Shell::PropertiesSystem::PROPERTYKEY;
-use crate::BusType;
-use super::error::{WinError, WinResult};
 
 #[allow(clippy::missing_safety_doc)]
 pub unsafe trait DeviceProperty {
@@ -64,7 +64,7 @@ impl From<InternalBusType> for BusType {
             InternalBusType::Bluetooth => BusType::Bluetooth,
             InternalBusType::BluetoothLE => BusType::Bluetooth,
             InternalBusType::I2c => BusType::I2c,
-            InternalBusType::Spi => BusType::Spi
+            InternalBusType::Spi => BusType::Spi,
         }
     }
 }
@@ -91,7 +91,6 @@ impl Drop for Handle {
     }
 }
 
-
 pub struct Overlapped(OVERLAPPED);
 
 impl Overlapped {
@@ -110,16 +109,15 @@ impl Overlapped {
                 self.as_raw(),
                 &mut bytes_written,
                 timeout.unwrap_or(INFINITE),
-                FALSE
+                FALSE,
             )
         };
         ensure!(cr == TRUE, Err(WinError::last()));
         Ok(bytes_written as usize)
     }
-
 }
 
-unsafe impl Send for Overlapped { }
+unsafe impl Send for Overlapped {}
 
 impl Default for Overlapped {
     fn default() -> Self {

@@ -1,5 +1,5 @@
-pub use windows_sys::core::GUID;
 use crate::{HidDevice, HidResult};
+pub use windows_sys::core::GUID;
 
 impl HidDevice {
     /// Get the container ID for a HID device.

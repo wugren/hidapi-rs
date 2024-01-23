@@ -1,9 +1,12 @@
+use crate::windows_native::error::{check_boolean, WinError, WinResult};
+use crate::windows_native::types::Handle;
 use std::ffi::c_void;
 use std::mem::{size_of, zeroed};
 use windows_sys::core::GUID;
-use windows_sys::Win32::Devices::HumanInterfaceDevice::{HIDD_ATTRIBUTES, HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetPreparsedData, HIDP_CAPS, HidP_GetCaps, HIDP_STATUS_SUCCESS};
-use super::error::{check_boolean, WinError, WinResult};
-use super::types::Handle;
+use windows_sys::Win32::Devices::HumanInterfaceDevice::{
+    HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetPreparsedData,
+    HidP_GetCaps, HIDD_ATTRIBUTES, HIDP_CAPS, HIDP_STATUS_SUCCESS,
+};
 
 pub fn get_interface_guid() -> GUID {
     unsafe {
@@ -29,12 +32,13 @@ pub struct PreparsedData(isize);
 
 impl Drop for PreparsedData {
     fn drop(&mut self) {
-        unsafe { HidD_FreePreparsedData(self.0); }
+        unsafe {
+            HidD_FreePreparsedData(self.0);
+        }
     }
 }
 
 impl PreparsedData {
-
     pub fn load(handle: &Handle) -> WinResult<Self> {
         let mut pp_data = 0;
         check_boolean(unsafe { HidD_GetPreparsedData(handle.as_raw(), &mut pp_data) })?;
@@ -51,9 +55,11 @@ impl PreparsedData {
         unsafe {
             let mut caps = zeroed();
             let r = HidP_GetCaps(self.0, &mut caps);
-            ensure!(r == HIDP_STATUS_SUCCESS, Err(WinError::InvalidPreparsedData));
+            ensure!(
+                r == HIDP_STATUS_SUCCESS,
+                Err(WinError::InvalidPreparsedData)
+            );
             Ok(caps)
         }
     }
-
 }
