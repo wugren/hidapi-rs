@@ -35,6 +35,8 @@
 //! }
 //! ```
 //!
+//! For more usage examples, please take a look at the `examples/` directory.
+//!
 //! # Feature flags
 //!
 //! - `linux-static-libusb`: uses statically linked `libusb` backend on Linux
