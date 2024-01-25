@@ -4,7 +4,6 @@ mod tests;
 mod typedefs;
 mod types;
 
-use crate::ensure;
 use crate::windows_native::descriptor::encoder::encode_descriptor;
 use crate::windows_native::descriptor::typedefs::{Caps, HidpPreparsedData, LinkCollectionNode};
 use crate::windows_native::descriptor::types::{

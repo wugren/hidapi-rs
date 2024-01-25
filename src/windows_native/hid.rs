@@ -1,4 +1,3 @@
-use crate::ensure;
 use crate::windows_native::error::{check_boolean, WinError, WinResult};
 use crate::windows_native::types::Handle;
 use std::ffi::c_void;

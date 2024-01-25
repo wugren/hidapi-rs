@@ -1,4 +1,3 @@
-use crate::ensure;
 use crate::windows_native::error::{check_config, WinError, WinResult};
 use crate::windows_native::string::U16Str;
 use crate::windows_native::types::{DeviceProperty, PropertyKey};

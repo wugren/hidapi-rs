@@ -1,5 +1,5 @@
 use crate::windows_native::error::{WinError, WinResult};
-use crate::{ensure, BusType};
+use crate::BusType;
 use std::mem::{size_of, zeroed};
 use std::ptr::null;
 use windows_sys::core::GUID;

@@ -1,4 +1,3 @@
-use crate::ensure;
 use crate::windows_native::error::{check_config, WinError, WinResult};
 use crate::windows_native::hid::get_interface_guid;
 use crate::windows_native::string::{U16Str, U16StringList};

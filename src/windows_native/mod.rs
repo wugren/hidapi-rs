@@ -1,4 +1,12 @@
-//! The implementation which uses the C library to perform operations
+//! The implementation which uses the the raw win32 api to perform operations
+
+macro_rules! ensure {
+    ($cond:expr, $result:expr) => {
+        if !($cond) {
+            return $result;
+        }
+    };
+}
 
 mod descriptor;
 mod dev_node;
@@ -41,15 +49,6 @@ use windows_sys::Win32::System::Threading::ResetEvent;
 use windows_sys::Win32::System::IO::{CancelIo, DeviceIoControl};
 
 const STRING_BUF_LEN: usize = 128;
-
-#[macro_export]
-macro_rules! ensure {
-    ($cond:expr, $result:expr) => {
-        if !($cond) {
-            return $result;
-        }
-    };
-}
 
 pub struct HidApiBackend;
 impl HidApiBackend {
