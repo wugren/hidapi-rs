@@ -53,6 +53,10 @@ jobs:
       run: cargo build --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
     - name: Run tests
       run: cargo test --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
+    - name: Verify package
+      run: |
+        rm -f ./etc/libusb/README.md
+        cargo package --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
 
   build-linux-native:
     runs-on: ubuntu-latest
@@ -71,6 +75,8 @@ jobs:
       run: cargo build --no-default-features --features linux-native --verbose
     - name: Run tests
       run: cargo test --no-default-features --features linux-native --verbose
+    - name: Verify package
+      run: cargo package --no-default-features --features linux-native --verbose
 
   build-windows:
     runs-on: windows-latest
@@ -87,6 +93,8 @@ jobs:
       run: cargo build --no-default-features --verbose
     - name: Run tests
       run: cargo test --no-default-features --verbose
+    - name: Verify package
+      run: cargo package --no-default-features --verbose
 
   build-windows-native:
     runs-on: windows-latest
@@ -103,6 +111,8 @@ jobs:
         run: cargo build --no-default-features --features windows-native --verbose
       - name: Run tests
         run: cargo test --no-default-features --features windows-native --verbose
+      - name: Verify package
+        run: cargo package --no-default-features --features windows-native --verbose
 
   build-macos:
     runs-on: macos-latest
@@ -118,6 +128,8 @@ jobs:
       run: cargo build --no-default-features --verbose
     - name: Run tests
       run: cargo test --no-default-features --verbose
+    - name: Verify package
+      run: cargo package --no-default-features --verbose
 
   fmt-check:
     runs-on: ubuntu-latest
