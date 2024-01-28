@@ -45,8 +45,8 @@ libc = "0.2"
 cfg-if = "1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-udev = { version = "0.7", optional = true }
-nix = { version = "0.26", optional = true }
+udev = { version = "0.8", optional = true }
+nix = { version = "0.27", optional = true, features = ["fs", "ioctl", "poll"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.48", features = ["Win32_Foundation"] }

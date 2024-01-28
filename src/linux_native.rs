@@ -489,7 +489,7 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
-        let pollfd = PollFd::new(self.fd.as_raw_fd(), PollFlags::POLLIN);
+        let pollfd = PollFd::new(&self.fd, PollFlags::POLLIN);
         let res = poll(&mut [pollfd], timeout)?;
 
         if res == 0 {
