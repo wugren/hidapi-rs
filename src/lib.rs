@@ -277,7 +277,7 @@ impl HidApi {
         let device = unsafe { ffi::hid_libusb_wrap_sys_device(sys_dev, interface_num) };
 
         if device.is_null() {
-            match self.check_error() {
+            match HidApiBackend::check_error() {
                 Ok(err) => Err(err),
                 Err(e) => Err(e),
             }
