@@ -2,9 +2,11 @@ name: Rust
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 env:
@@ -20,8 +22,12 @@ jobs:
     strategy:
       fail-fast: false # don't give up on the whole matrix if one variant fails
       matrix:
-        linkage: ['static', 'shared']
-        library: ['hidraw', 'libusb']
+        linkage:
+          - static
+          - shared
+        library:
+          - hidraw
+          - libusb
 
     steps:
       - name: Checkout repository and submodules
