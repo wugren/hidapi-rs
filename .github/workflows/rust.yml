@@ -24,7 +24,7 @@ jobs:
         library: ['hidraw', 'libusb']
 
     steps:
-      - name: checkout repository and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -32,6 +32,8 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y cmake libudev-dev libumockdev-dev umockdev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Build libusb
         run: |
           git clone https://github.com/libusb/libusb.git ./etc/libusb/
@@ -64,7 +66,7 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
-      - name: checkout repository and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -72,6 +74,8 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y libudev-dev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Build
         run: cargo build --no-default-features --features linux-native --verbose
       - name: Run tests
@@ -82,14 +86,12 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: checkout repository and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install rust environment
-        run: |
-          curl.exe --proto "=https" --tlsv1.2 -L -o rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
-          .\rustup-init.exe -y
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Build
         run: cargo build --no-default-features --verbose
       - name: Run tests
@@ -100,14 +102,12 @@ jobs:
   build-windows-native:
     runs-on: windows-latest
     steps:
-      - name: checkout repository and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install rust environment
-        run: |
-          curl.exe --proto "=https" --tlsv1.2 -L -o rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
-          .\rustup-init.exe -y
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Build
         run: cargo build --no-default-features --features windows-native --verbose
       - name: Run tests
@@ -118,13 +118,12 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - name: checkout repository and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install rust environment
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Build
         run: cargo build --no-default-features --verbose
       - name: Run tests
@@ -139,9 +138,13 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
 
     steps:
-      - name: checkout repository and submodules
+      - name: Checkout repository and submodules
         uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: fmt check
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check code formatting
         run: cargo fmt --check
