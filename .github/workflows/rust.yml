@@ -55,6 +55,7 @@ jobs:
     - name: Run tests
       run: cargo test --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
     - name: Verify package
+      # TODO: Fix integration of libusb to avoid manual removal of README.md.
       run: |
         rm -f ./etc/libusb/README.md
         cargo package --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
