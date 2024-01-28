@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: checkout repository and submodules
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install dependencies
@@ -65,7 +65,7 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
     steps:
       - name: checkout repository and submodules
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install dependencies
@@ -83,7 +83,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: checkout repository and submodules
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install rust environment
@@ -101,7 +101,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: checkout repository and submodules
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install rust environment
@@ -119,7 +119,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: checkout repository and submodules
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install rust environment
@@ -140,7 +140,7 @@ jobs:
 
     steps:
       - name: checkout repository and submodules
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: fmt check
