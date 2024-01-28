@@ -17,6 +17,29 @@ build = "build.rs"
 links = "hidapi"
 documentation = "https://docs.rs/hidapi"
 edition = "2021"
+include = [
+    "README.md",
+    "LICENSE.txt",
+    "build.rs",
+    "/src",
+    "/etc/hidapi/CMakeLists.txt",
+    "/etc/hidapi/LICENSE*",
+    "/etc/hidapi/VERSION",
+    "/etc/hidapi/hidapi",
+    "/etc/hidapi/libusb",
+    "/etc/hidapi/src",
+    "/etc/hidapi/udev",
+    # Platform support files
+    "/etc/hidapi/linux/CMakeLists.txt",
+    "/etc/hidapi/linux/*.c",
+    "/etc/hidapi/linux/*.h",
+    "/etc/hidapi/mac/CMakeLists.txt",
+    "/etc/hidapi/mac/*.c",
+    "/etc/hidapi/mac/*.h",
+    "/etc/hidapi/windows/CMakeLists.txt",
+    "/etc/hidapi/windows/*.c",
+    "/etc/hidapi/windows/*.h",
+]
 
 [features]
 default = ["linux-static-hidraw", "illumos-static-libusb"]
