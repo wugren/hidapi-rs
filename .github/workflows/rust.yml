@@ -2,9 +2,11 @@ name: Rust
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 env:
@@ -12,7 +14,6 @@ env:
 
 jobs:
   build-linux:
-
     runs-on: ubuntu-latest
 
     env:
@@ -21,94 +22,98 @@ jobs:
     strategy:
       fail-fast: false # don't give up on the whole matrix if one variant fails
       matrix:
-        linkage: ["static", "shared"]
-        library: ["hidraw", "libusb"]
+        linkage:
+          - static
+          - shared
+        library:
+          - hidraw
+          - libusb
 
     steps:
-    - name: checkout repository and submodules
-      uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: Install dependencies
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install -y cmake libudev-dev libumockdev-dev umockdev
-    - name: Build libusb
-      run: |
-        git clone https://github.com/libusb/libusb.git ./etc/libusb/
-        cd ./etc/libusb/
-        ./autogen.sh
-        make
-        sudo make install
-    - name: Build hidapi
-      run: |
-        cd ./etc/hidapi/
-        mkdir ./build/
-        cd ./build/
-        cmake ..
-        make
-        sudo make install
-    - name: List pkgconfig definitions
-      run: grep -RHn ^ /usr/local/lib/pkgconfig
-    - name: Build
-      run: cargo build --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
-    - name: Run tests
-      run: cargo test --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
-    - name: Verify package
-      # TODO: Fix integration of libusb to avoid manual removal of README.md.
-      run: |
-        rm -f ./etc/libusb/README.md
-        cargo package --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y cmake libudev-dev libumockdev-dev umockdev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build libusb
+        run: |
+          git clone https://github.com/libusb/libusb.git ./etc/libusb/
+          cd ./etc/libusb/
+          ./autogen.sh
+          make
+          sudo make install
+          cd -
+          rm -rf ./etc/libusb/
+      - name: Build hidapi
+        run: |
+          cd ./etc/hidapi/
+          mkdir ./build/
+          cd ./build/
+          cmake ..
+          make
+          sudo make install
+      - name: List pkgconfig definitions
+        run: grep -RHn ^ /usr/local/lib/pkgconfig
+      - name: Build
+        run: cargo build --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
+      - name: Run tests
+        run: cargo test --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
+      - name: Verify package
+        run: |
+          cargo package --no-default-features --features linux-${{ matrix.linkage }}-${{ matrix.library }} --verbose
 
   build-linux-native:
     runs-on: ubuntu-latest
     env:
       DEBIAN_FRONTEND: noninteractive
     steps:
-    - name: checkout repository and submodules
-      uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: Install dependencies
-      run: |
-        sudo apt-get update -y
-        sudo apt-get install -y libudev-dev
-    - name: Build
-      run: cargo build --no-default-features --features linux-native --verbose
-    - name: Run tests
-      run: cargo test --no-default-features --features linux-native --verbose
-    - name: Verify package
-      run: cargo package --no-default-features --features linux-native --verbose
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libudev-dev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --no-default-features --features linux-native --verbose
+      - name: Run tests
+        run: cargo test --no-default-features --features linux-native --verbose
+      - name: Verify package
+        run: cargo package --no-default-features --features linux-native --verbose
 
   build-windows:
     runs-on: windows-latest
     steps:
-    - name: checkout repository and submodules
-      uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: Install rust environment
-      run: |
-        curl.exe --proto "=https" --tlsv1.2 -L -o rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
-        .\rustup-init.exe -y
-    - name: Build
-      run: cargo build --no-default-features --verbose
-    - name: Run tests
-      run: cargo test --no-default-features --verbose
-    - name: Verify package
-      run: cargo package --no-default-features --verbose
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --no-default-features --verbose
+      - name: Run tests
+        run: cargo test --no-default-features --verbose
+      - name: Verify package
+        run: cargo package --no-default-features --verbose
 
   build-windows-native:
     runs-on: windows-latest
     steps:
-      - name: checkout repository and submodules
-        uses: actions/checkout@v2
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
         with:
           submodules: recursive
-      - name: Install rust environment
-        run: |
-          curl.exe --proto "=https" --tlsv1.2 -L -o rustup-init.exe https://static.rust-lang.org/rustup/dist/x86_64-pc-windows-msvc/rustup-init.exe
-          .\rustup-init.exe -y
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Build
         run: cargo build --no-default-features --features windows-native --verbose
       - name: Run tests
@@ -119,19 +124,18 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-    - name: checkout repository and submodules
-      uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: Install rust environment
-      run: |
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-    - name: Build
-      run: cargo build --no-default-features --verbose
-    - name: Run tests
-      run: cargo test --no-default-features --verbose
-    - name: Verify package
-      run: cargo package --no-default-features --verbose
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --no-default-features --verbose
+      - name: Run tests
+        run: cargo test --no-default-features --verbose
+      - name: Verify package
+        run: cargo package --no-default-features --verbose
 
   fmt-check:
     runs-on: ubuntu-latest
@@ -140,9 +144,13 @@ jobs:
       DEBIAN_FRONTEND: noninteractive
 
     steps:
-    - name: checkout repository and submodules
-      uses: actions/checkout@v2
-      with:
-        submodules: recursive
-    - name: fmt check
-      run: cargo fmt --check
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check code formatting
+        run: cargo fmt --check
