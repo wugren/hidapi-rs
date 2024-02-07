@@ -8,7 +8,7 @@ use std::{
     fs::{File, OpenOptions},
     io::{Cursor, Read, Seek, SeekFrom},
     os::{
-        fd::{AsRawFd, OwnedFd},
+        fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
         unix::{ffi::OsStringExt, fs::OpenOptionsExt},
     },
     path::{Path, PathBuf},
@@ -470,6 +470,12 @@ impl HidDevice {
 
         let info = self.info.borrow();
         Ok(Ref::map(info, |i: &Option<DeviceInfo>| i.as_ref().unwrap()))
+    }
+}
+
+impl AsFd for HidDevice {
+    fn as_fd(&self) -> BorrowedFd {
+        self.fd.as_fd()
     }
 }
 
