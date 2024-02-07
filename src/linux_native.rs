@@ -8,7 +8,7 @@ use std::{
     fs::{File, OpenOptions},
     io::{Cursor, Read, Seek, SeekFrom},
     os::{
-        fd::{AsRawFd, OwnedFd, AsFd, BorrowedFd},
+        fd::{AsFd, AsRawFd, BorrowedFd, OwnedFd},
         unix::{ffi::OsStringExt, fs::OpenOptionsExt},
     },
     path::{Path, PathBuf},
