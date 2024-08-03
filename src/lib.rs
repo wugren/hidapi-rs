@@ -59,6 +59,7 @@
 //! Since `hidapi` 0.12 it is possible to open MacOS devices with shared access, so that multiple
 //! [`HidDevice`] handles can access the same physical device. For backward compatibility this is
 //! an opt-in that can be enabled with the `macos-shared-device` feature flag.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod error;
 mod ffi;
