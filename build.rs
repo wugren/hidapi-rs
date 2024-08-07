@@ -25,8 +25,8 @@ use std::env;
 fn main() {
     let target = env::var("TARGET").unwrap();
 
-    println!("cargo::rustc-check-cfg=cfg(hidapi)");
-    println!("cargo::rustc-check-cfg=cfg(libusb)");
+    println!("cargo:rustc-check-cfg=cfg(hidapi)");
+    println!("cargo:rustc-check-cfg=cfg(libusb)");
 
     if target.contains("linux") {
         compile_linux();
