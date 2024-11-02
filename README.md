@@ -9,6 +9,13 @@ This crate provides a rust abstraction over the features of the C library
 This crate is on [crates.io](https://crates.io/crates/hidapi) and can be
 used by adding `hidapi` to the dependencies in your project's `Cargo.toml`.
 
+In case you are downloading / checking out this repository directly via git,
+make sure to initialize the git submodules after cloning!
+
+```sh
+git submodule update --init
+```
+
 # Example
 
 ```rust
