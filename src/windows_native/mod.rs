@@ -35,7 +35,7 @@ use crate::windows_native::types::{Handle, Overlapped};
 use crate::{DeviceInfo, HidDeviceBackendBase, HidDeviceBackendWindows, HidError, HidResult};
 use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::HumanInterfaceDevice::{
-    HidD_GetIndexedString, HidD_SetFeature, HidD_SetNumInputBuffers,
+    HidD_GetIndexedString, HidD_SetFeature, HidD_SetNumInputBuffers, HidD_SetOutputReport,
 };
 use windows_sys::Win32::Devices::Properties::{
     DEVPKEY_Device_ContainerId, DEVPKEY_Device_InstanceId,
@@ -274,6 +274,22 @@ impl HidDeviceBackendBase for HidDevice {
         }
 
         Ok(bytes_returned as usize)
+    }
+
+    fn send_output_report(&self, data: &[u8]) -> HidResult<()> {
+        ensure!(!data.is_empty(), Err(HidError::InvalidZeroSizeData));
+        let mut state = self.feature_state.borrow_mut();
+        state.fill_buffer(data);
+
+        check_boolean(unsafe {
+            HidD_SetOutputReport(
+                self.device_handle.as_raw(),
+                state.buffer_ptr() as _,
+                state.buffer_len() as u32,
+            )
+        })?;
+
+        Ok(())
     }
 
     fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
