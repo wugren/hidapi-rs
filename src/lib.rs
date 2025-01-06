@@ -579,8 +579,6 @@ impl HidDevice {
     /// `send_feature_report()`: 'the Report ID' (or 0x0, for devices which
     /// do not use numbered reports), followed by the report data (16 bytes).
     /// In this example, the length passed in would be 17.
-    ///
-    /// If successful, returns the actual number of bytes written.
     pub fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
         self.inner.send_feature_report(data)
     }
@@ -660,6 +658,8 @@ impl HidDevice {
     ///
     /// User has to provide a preallocated buffer where the descriptor will be copied to.
     /// It is recommended to use a preallocated buffer of [`MAX_REPORT_DESCRIPTOR_SIZE`] size.
+    ///
+    /// On success returns the number of bytes actually filled into `buf`
     pub fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
         self.inner.get_report_descriptor(buf)
     }
