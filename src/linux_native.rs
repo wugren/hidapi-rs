@@ -2,6 +2,9 @@
 
 mod ioctl;
 
+#[cfg(feature = "linux-native-basic-udev")]
+use basic_udev as udev;
+
 use std::{
     cell::{Cell, Ref, RefCell},
     ffi::{CStr, CString, OsStr, OsString},
