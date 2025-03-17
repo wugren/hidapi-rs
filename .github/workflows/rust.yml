@@ -89,6 +89,28 @@ jobs:
       - name: Verify package
         run: cargo package --no-default-features --features linux-native --verbose
 
+  build-linux-native-basic-udev:
+    runs-on: ubuntu-latest
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libudev-dev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --no-default-features --features linux-native-basic-udev --verbose
+      - name: Run tests
+        run: cargo test --no-default-features --features linux-native-basic-udev --verbose
+      - name: Verify package
+        run: cargo package --no-default-features --features linux-native-basic-udev --verbose
+
   build-windows:
     runs-on: windows-latest
     steps:
@@ -120,6 +142,22 @@ jobs:
         run: cargo test --no-default-features --features windows-native --verbose
       - name: Verify package
         run: cargo package --no-default-features --features windows-native --verbose
+
+  build-linux-on-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install Linux target
+        run: rustup target add arm-unknown-linux-musleabihf
+      - name: Build
+        run: cargo build --target arm-unknown-linux-musleabihf --no-default-features --features linux-native-basic-udev --verbose
+      - name: Verify package
+        run: cargo package --target arm-unknown-linux-musleabihf --no-default-features --features linux-native-basic-udev --verbose
 
   build-macos:
     runs-on: macos-latest
