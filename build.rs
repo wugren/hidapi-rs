@@ -49,7 +49,7 @@ fn compile_linux() {
     // First check the features enabled for the crate.
     // Only one linux backend should be enabled at a time.
 
-    let avail_backends: [(&'static str, Box<dyn Fn()>); 5] = [
+    let avail_backends: [(&'static str, Box<dyn Fn()>); 6] = [
         (
             "LINUX_STATIC_HIDRAW",
             Box::new(|| {
@@ -104,6 +104,15 @@ fn compile_linux() {
             "LINUX_NATIVE",
             Box::new(|| {
                 // The udev crate takes care of finding its library
+            }),
+        ),
+        (
+            "LINUX_NATIVE_BASIC_UDEV",
+            Box::new(|| {
+                // Enable `feature="linux-native"` to reuse the existing
+                // linux-native code. It is considered an error in
+                // basic-udev if this fails to compile.
+                println!("cargo:rustc-cfg=feature=\"linux-native\"");
             }),
         ),
     ];
