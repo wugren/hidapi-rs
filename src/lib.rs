@@ -226,6 +226,9 @@ impl HidApi {
     /// # Panics
     ///
     /// Panics if an hidapi context has already been initialized with device discovery.
+    #[deprecated(
+        note = "Please use only `HidApi::new()` in library code. Application code should disable device discovery explicitly."
+    )]
     pub fn new_without_enumerate() -> HidResult<Self> {
         Self::disable_device_discovery();
         Self::new()
