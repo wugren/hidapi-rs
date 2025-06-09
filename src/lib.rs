@@ -126,21 +126,44 @@ cfg_if! {
 pub type HidResult<T> = Result<T, HidError>;
 pub const MAX_REPORT_DESCRIPTOR_SIZE: usize = 4096;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InitState {
-    NotInit,
-    Init { enumerate: bool },
+struct ContextState {
+    device_discovery: bool,
+    init_state: InitState,
 }
 
-static INIT_STATE: Mutex<InitState> = Mutex::new(InitState::NotInit);
+enum InitState {
+    NotInit,
+    Init,
+}
 
-fn lazy_init(do_enumerate: bool) -> HidResult<()> {
-    let mut init_state = INIT_STATE.lock().unwrap();
+/// Global state to coordinate backing C library global context management.
+static CONTEXT_STATE: Mutex<ContextState> = Mutex::new(ContextState {
+    device_discovery: true,
+    init_state: InitState::NotInit,
+});
 
-    match *init_state {
-        InitState::NotInit => {
+/// `hidapi` context.
+///
+/// The `hidapi` C library is lazily initialized when creating the first instance,
+/// and never deinitialized. Therefore, it is allowed to create multiple `HidApi`
+/// instances.
+///
+/// Each instance has its own device list cache.
+pub struct HidApi {
+    device_list: Vec<DeviceInfo>,
+}
+
+impl HidApi {
+    /// Create a new hidapi context.
+    ///
+    /// Will also initialize the currently available device list if device discovery has not already
+    /// been [disabled](Self::disable_device_discovery).
+    pub fn new() -> HidResult<Self> {
+        let mut state = CONTEXT_STATE.lock().unwrap();
+
+        if let InitState::NotInit = state.init_state {
             #[cfg(all(libusb, not(target_os = "freebsd")))]
-            if !do_enumerate {
+            if !state.device_discovery {
                 // Do not scan for devices in libusb_init()
                 // Must be set before calling it.
                 // This is needed on Android, where access to USB devices is limited
@@ -158,42 +181,8 @@ fn lazy_init(do_enumerate: bool) -> HidResult<()> {
                 ffi::macos::hid_darwin_set_open_exclusive(0)
             }
 
-            *init_state = InitState::Init {
-                enumerate: do_enumerate,
-            }
+            state.init_state = InitState::Init;
         }
-        InitState::Init { enumerate } => {
-            if enumerate != do_enumerate {
-                panic!("Trying to initialize hidapi with enumeration={}, but it is already initialized with enumeration={}.", do_enumerate, enumerate)
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// `hidapi` context.
-///
-/// The `hidapi` C library is lazily initialized when creating the first instance,
-/// and never deinitialized. Therefore, it is allowed to create multiple `HidApi`
-/// instances.
-///
-/// Each instance has its own device list cache.
-pub struct HidApi {
-    device_list: Vec<DeviceInfo>,
-}
-
-impl HidApi {
-    /// Create a new hidapi context.
-    ///
-    /// Will also initialize the currently available device list.
-    ///
-    /// # Panics
-    ///
-    /// Panics if hidapi is already initialized in "without enumerate" mode
-    /// (i.e. if `new_without_enumerate()` has been called before).
-    pub fn new() -> HidResult<Self> {
-        lazy_init(true)?;
 
         let mut api = HidApi {
             device_list: Vec::with_capacity(8),
@@ -202,20 +191,47 @@ impl HidApi {
         Ok(api)
     }
 
-    /// Create a new hidapi context, in "do not enumerate" mode.
+    /// Disable device discovery on context creation.
     ///
-    /// This is needed on Android, where access to USB device enumeration is limited.
+    /// This may be necessary on Android, where access to USB device enumeration is limited.
     ///
     /// # Panics
     ///
-    /// Panics if hidapi is already initialized in "do enumerate" mode
-    /// (i.e. if `new()` has been called before).
-    pub fn new_without_enumerate() -> HidResult<Self> {
-        lazy_init(false)?;
+    /// Panics if an hidapi context has already been initialized with device discovery.
+    ///
+    /// <section class="warning">
+    ///
+    /// Avoid using this in library code, as it is an inherently global operation.
+    ///
+    /// This function is intended to be called by code that knows the environment it is running in.
+    /// Usually this means application code either directly, or through another abstraction.
+    ///
+    /// </section>
+    pub fn disable_device_discovery() {
+        let mut state = CONTEXT_STATE.lock().unwrap();
 
-        Ok(HidApi {
-            device_list: Vec::new(),
-        })
+        if let InitState::NotInit = state.init_state {
+            state.device_discovery = false; // Only disable device discovery before init.
+        } else if state.device_discovery {
+            core::mem::drop(state); // Make sure we don't poison the lock when panicking.
+            panic!("Cannot disable device discovery after HidApi has been initialized");
+        }
+    }
+
+    /// Create a new hidapi context, after disabling discovery. Please avoid using this function in
+    /// library code, because it forces all instances of HidApi to disable device discovery.
+    ///
+    /// See [`HidApi::disable_device_discovery()`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if an hidapi context has already been initialized with device discovery.
+    #[deprecated(
+        note = "Please use only `HidApi::new()` in library code. Application code should disable device discovery explicitly."
+    )]
+    pub fn new_without_enumerate() -> HidResult<Self> {
+        Self::disable_device_discovery();
+        Self::new()
     }
 
     /// Refresh devices list and information about them (to access them use

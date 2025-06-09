@@ -49,72 +49,53 @@ fn compile_linux() {
     // First check the features enabled for the crate.
     // Only one linux backend should be enabled at a time.
 
-    let avail_backends: [(&'static str, Box<dyn Fn()>); 6] = [
-        (
-            "LINUX_STATIC_HIDRAW",
-            Box::new(|| {
-                let mut config = cc::Build::new();
-                println!("cargo:rerun-if-changed=etc/hidapi/linux/hid.c");
-                config
-                    .file("etc/hidapi/linux/hid.c")
-                    .include("etc/hidapi/hidapi");
-                pkg_config::probe_library("libudev").expect("Unable to find libudev");
-                config.compile("libhidapi.a");
-                println!("cargo:rustc-cfg=hidapi");
-            }),
-        ),
-        (
-            "LINUX_STATIC_LIBUSB",
-            Box::new(|| {
-                let mut config = cc::Build::new();
-                println!("cargo:rerun-if-changed=etc/hidapi/linux/hid.c");
-                config
-                    .file("etc/hidapi/libusb/hid.c")
-                    .include("etc/hidapi/hidapi");
-                let lib =
-                    pkg_config::find_library("libusb-1.0").expect("Unable to find libusb-1.0");
-                for path in lib.include_paths {
-                    config.include(
-                        path.to_str()
-                            .expect("Failed to convert include path to str"),
-                    );
-                }
-                config.compile("libhidapi.a");
-                println!("cargo:rustc-cfg=libusb");
-                println!("cargo:rustc-cfg=hidapi");
-            }),
-        ),
-        (
-            "LINUX_SHARED_HIDRAW",
-            Box::new(|| {
-                pkg_config::probe_library("hidapi-hidraw").expect("Unable to find hidapi-hidraw");
-                println!("cargo:rustc-cfg=hidapi");
-            }),
-        ),
-        (
-            "LINUX_SHARED_LIBUSB",
-            Box::new(|| {
-                pkg_config::probe_library("libusb-1.0").expect("Unable to find libusb-1.0");
-                pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
-                println!("cargo:rustc-cfg=libusb");
-                println!("cargo:rustc-cfg=hidapi");
-            }),
-        ),
-        (
-            "LINUX_NATIVE",
-            Box::new(|| {
-                // The udev crate takes care of finding its library
-            }),
-        ),
-        (
-            "LINUX_NATIVE_BASIC_UDEV",
-            Box::new(|| {
-                // Enable `feature="linux-native"` to reuse the existing
-                // linux-native code. It is considered an error in
-                // basic-udev if this fails to compile.
-                println!("cargo:rustc-cfg=feature=\"linux-native\"");
-            }),
-        ),
+    let avail_backends: [(&'static str, &dyn Fn()); 6] = [
+        ("LINUX_STATIC_HIDRAW", &|| {
+            let mut config = cc::Build::new();
+            println!("cargo:rerun-if-changed=etc/hidapi/linux/hid.c");
+            config
+                .file("etc/hidapi/linux/hid.c")
+                .include("etc/hidapi/hidapi");
+            pkg_config::probe_library("libudev").expect("Unable to find libudev");
+            config.compile("libhidapi.a");
+            println!("cargo:rustc-cfg=hidapi");
+        }),
+        ("LINUX_STATIC_LIBUSB", &|| {
+            let mut config = cc::Build::new();
+            println!("cargo:rerun-if-changed=etc/hidapi/linux/hid.c");
+            config
+                .file("etc/hidapi/libusb/hid.c")
+                .include("etc/hidapi/hidapi");
+            let lib = pkg_config::find_library("libusb-1.0").expect("Unable to find libusb-1.0");
+            for path in lib.include_paths {
+                config.include(
+                    path.to_str()
+                        .expect("Failed to convert include path to str"),
+                );
+            }
+            config.compile("libhidapi.a");
+            println!("cargo:rustc-cfg=libusb");
+            println!("cargo:rustc-cfg=hidapi");
+        }),
+        ("LINUX_SHARED_HIDRAW", &|| {
+            pkg_config::probe_library("hidapi-hidraw").expect("Unable to find hidapi-hidraw");
+            println!("cargo:rustc-cfg=hidapi");
+        }),
+        ("LINUX_SHARED_LIBUSB", &|| {
+            pkg_config::probe_library("libusb-1.0").expect("Unable to find libusb-1.0");
+            pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
+            println!("cargo:rustc-cfg=libusb");
+            println!("cargo:rustc-cfg=hidapi");
+        }),
+        ("LINUX_NATIVE", &|| {
+            // The udev crate takes care of finding its library
+        }),
+        ("LINUX_NATIVE_BASIC_UDEV", &|| {
+            // Enable `feature="linux-native"` to reuse the existing
+            // linux-native code. It is considered an error in
+            // basic-udev if this fails to compile.
+            println!("cargo:rustc-cfg=feature=\"linux-native\"");
+        }),
     ];
 
     let mut backends = avail_backends
@@ -155,31 +136,24 @@ fn compile_illumos() {
     // First check the features enabled for the crate.
     // Only one illumos backend should be enabled at a time.
 
-    let avail_backends: [(&'static str, Box<dyn Fn()>); 2] = [
-        (
-            "ILLUMOS_STATIC_LIBUSB",
-            Box::new(|| {
-                let mut config = cc::Build::new();
-                config
-                    .file("etc/hidapi/libusb/hid.c")
-                    .include("etc/hidapi/hidapi");
-                let lib =
-                    pkg_config::find_library("libusb-1.0").expect("Unable to find libusb-1.0");
-                for path in lib.include_paths {
-                    config.include(
-                        path.to_str()
-                            .expect("Failed to convert include path to str"),
-                    );
-                }
-                config.compile("libhidapi.a");
-            }),
-        ),
-        (
-            "ILLUMOS_SHARED_LIBUSB",
-            Box::new(|| {
-                pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
-            }),
-        ),
+    let avail_backends: [(&'static str, &dyn Fn()); 2] = [
+        ("ILLUMOS_STATIC_LIBUSB", &|| {
+            let mut config = cc::Build::new();
+            config
+                .file("etc/hidapi/libusb/hid.c")
+                .include("etc/hidapi/hidapi");
+            let lib = pkg_config::find_library("libusb-1.0").expect("Unable to find libusb-1.0");
+            for path in lib.include_paths {
+                config.include(
+                    path.to_str()
+                        .expect("Failed to convert include path to str"),
+                );
+            }
+            config.compile("libhidapi.a");
+        }),
+        ("ILLUMOS_SHARED_LIBUSB", &|| {
+            pkg_config::probe_library("hidapi-libusb").expect("Unable to find hidapi-libusb");
+        }),
     ];
 
     let mut backends = avail_backends
