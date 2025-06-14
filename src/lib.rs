@@ -484,7 +484,7 @@ impl fmt::Debug for DeviceInfo {
 }
 
 /// Trait which the different backends must implement
-trait HidDeviceBackendBase {
+trait HidDeviceBackendBase: Send + Sync + 'static {
     #[cfg(hidapi)]
     fn check_error(&self) -> HidResult<HidError>;
     fn write(&self, data: &[u8]) -> HidResult<usize>;
@@ -507,6 +507,7 @@ trait HidDeviceBackendBase {
             message: "get_indexed_string: not supported".to_string(),
         })
     }
+    fn close(&self) -> HidResult<()>;
 }
 
 pub struct HidDevice {
@@ -683,5 +684,9 @@ impl HidDevice {
     /// Get [`DeviceInfo`] from a HID device.
     pub fn get_device_info(&self) -> HidResult<DeviceInfo> {
         self.inner.get_device_info()
+    }
+
+    pub fn close(&self) -> HidResult<()> {
+        self.inner.close()
     }
 }

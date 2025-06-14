@@ -97,7 +97,7 @@ static HidD_GetManufacturerString_ HidD_GetManufacturerString;
 static HidD_GetProductString_ HidD_GetProductString;
 static HidD_SetFeature_ HidD_SetFeature;
 static HidD_GetFeature_ HidD_GetFeature;
-static HidD_SetOutputReport_ HidD_SetOutputReport; 
+static HidD_SetOutputReport_ HidD_SetOutputReport;
 static HidD_GetInputReport_ HidD_GetInputReport;
 static HidD_GetIndexedString_ HidD_GetIndexedString;
 static HidD_GetPreparsedData_ HidD_GetPreparsedData;
@@ -190,6 +190,7 @@ struct hid_device_ {
 		unsigned char *feature_buf;
 		wchar_t *last_error_str;
 		BOOL read_pending;
+		BOOL has_report_id;
 		char *read_buf;
 		OVERLAPPED ol;
 		OVERLAPPED write_ol;
@@ -209,12 +210,13 @@ static hid_device *new_hid_device()
 	dev->blocking = TRUE;
 	dev->output_report_length = 0;
 	dev->write_buf = NULL;
-	dev->input_report_length = 0;
+	dev->input_report_length = 1024;
 	dev->feature_report_length = 0;
 	dev->feature_buf = NULL;
 	dev->last_error_str = NULL;
 	dev->read_pending = FALSE;
 	dev->read_buf = NULL;
+	dev->has_report_id = TRUE;
 	memset(&dev->ol, 0, sizeof(dev->ol));
 	dev->ol.hEvent = CreateEvent(NULL, FALSE, FALSE /*initial state f=nonsignaled*/, NULL);
 	memset(&dev->write_ol, 0, sizeof(dev->write_ol));
@@ -380,6 +382,28 @@ int HID_API_EXPORT hid_init(void)
 	}
 #endif
 	return 0;
+}
+
+BOOL check_if_report_id_exists(HANDLE hidDevice) {
+    // 获取HID描述符的大小
+    PHIDP_PREPARSED_DATA preparsedData;
+    if (!HidD_GetPreparsedData(hidDevice, &preparsedData)) {
+        return FALSE;
+    }
+
+    HIDP_CAPS caps;
+    if (HidP_GetCaps(preparsedData, &caps) != HIDP_STATUS_SUCCESS) {
+        HidD_FreePreparsedData(preparsedData);
+        return FALSE;
+    }
+
+    // 检查是否有Report ID
+    BOOL hasReportId = caps.InputReportByteLength > 0 || caps.OutputReportByteLength > 0 || caps.FeatureReportByteLength > 0;
+
+    // 释放资源
+    HidD_FreePreparsedData(preparsedData);
+
+    return hasReportId;
 }
 
 int HID_API_EXPORT hid_exit(void)
@@ -811,7 +835,7 @@ struct hid_device_info HID_API_EXPORT * HID_API_CALL hid_enumerate(unsigned shor
 {
 	struct hid_device_info *root = NULL; /* return object */
 	struct hid_device_info *cur_dev = NULL;
-	GUID interface_class_guid;
+	static const GUID interface_class_guid = { 0x28d78fad, 0x5a12, 0x11D1, { 0xae, 0x5b,  0x00,  0x00,  0xf8,  0x03,  0xa8,  0xc2 } };
 	CONFIGRET cr;
 	wchar_t* device_interface_list = NULL;
 	DWORD len;
@@ -820,10 +844,6 @@ struct hid_device_info HID_API_EXPORT * HID_API_CALL hid_enumerate(unsigned shor
 		/* register_global_error: global error is reset by hid_init */
 		return NULL;
 	}
-
-	/* Retrieve HID Interface Class GUID
-	   https://docs.microsoft.com/windows-hardware/drivers/install/guid-devinterface-hid */
-	HidD_GetHidGuid(&interface_class_guid);
 
 	/* Get the list of all device interfaces belonging to the HID class. */
 	/* Retry in case of list was changed between calls to
@@ -868,16 +888,10 @@ struct hid_device_info HID_API_EXPORT * HID_API_CALL hid_enumerate(unsigned shor
 			continue;
 		}
 
-		/* Get the Vendor ID and Product ID for this device. */
-		attrib.Size = sizeof(HIDD_ATTRIBUTES);
-		if (!HidD_GetAttributes(device_handle, &attrib)) {
-			goto cont_close;
-		}
-
 		/* Check the VID/PID to see if we should add this
 		   device to the enumeration list. */
-		if ((vendor_id == 0x0 || attrib.VendorID == vendor_id) &&
-		    (product_id == 0x0 || attrib.ProductID == product_id)) {
+		if (vendor_id == 0x0 &&
+		    product_id == 0x0) {
 
 			/* VID/PID match. Create the record. */
 			struct hid_device_info *tmp = hid_internal_get_device_info(device_interface, device_handle);
@@ -1010,22 +1024,22 @@ HID_API_EXPORT hid_device * HID_API_CALL hid_open_path(const char *path)
 		}
 	}
 
-	/* Set the Input Report buffer size to 64 reports. */
-	if (!HidD_SetNumInputBuffers(device_handle, 64)) {
-		register_global_winapi_error(L"set input buffers");
-		goto end_of_function;
-	}
-
-	/* Get the Input Report length for the device. */
-	if (!HidD_GetPreparsedData(device_handle, &pp_data)) {
-		register_global_winapi_error(L"get preparsed data");
-		goto end_of_function;
-	}
-
-	if (HidP_GetCaps(pp_data, &caps) != HIDP_STATUS_SUCCESS) {
-		register_global_error(L"HidP_GetCaps");
-		goto end_of_function;
-	}
+//	/* Set the Input Report buffer size to 64 reports. */
+//	if (!HidD_SetNumInputBuffers(device_handle, 64)) {
+//		register_global_winapi_error(L"set input buffers");
+//		goto end_of_function;
+//	}
+//
+//	/* Get the Input Report length for the device. */
+//	if (!HidD_GetPreparsedData(device_handle, &pp_data)) {
+//		register_global_winapi_error(L"get preparsed data");
+//		goto end_of_function;
+//	}
+//
+//	if (HidP_GetCaps(pp_data, &caps) != HIDP_STATUS_SUCCESS) {
+//		register_global_error(L"HidP_GetCaps");
+//		goto end_of_function;
+//	}
 
 	dev = new_hid_device();
 
@@ -1040,6 +1054,7 @@ HID_API_EXPORT hid_device * HID_API_CALL hid_open_path(const char *path)
 	dev->output_report_length = caps.OutputReportByteLength;
 	dev->input_report_length = caps.InputReportByteLength;
 	dev->feature_report_length = caps.FeatureReportByteLength;
+	dev->has_report_id = check_if_report_id_exists(dev->device_handle);
 	dev->read_buf = (char*) malloc(dev->input_report_length);
 	dev->device_info = hid_internal_get_device_info(interface_path, dev->device_handle);
 
@@ -1203,7 +1218,7 @@ int HID_API_EXPORT HID_API_CALL hid_read_timeout(hid_device *dev, unsigned char 
 	dev->read_pending = FALSE;
 
 	if (res && bytes_read > 0) {
-		if (dev->read_buf[0] == 0x0) {
+		if (dev->has_report_id && dev->read_buf[0] == 0x0) {
 			/* If report numbers aren't being used, but Windows sticks a report
 			   number (0x0) on the beginning of the report anyway. To make this
 			   work like the other platforms, and to make it work more like the
@@ -1357,7 +1372,7 @@ int HID_API_EXPORT HID_API_CALL hid_send_output_report(hid_device* dev, const un
 
 	/* Windows expects at least caps.OutputeportByteLength bytes passed
 	   to HidD_SetOutputReport(), even if the report is shorter. Any less sent and
-	   the function fails with error ERROR_INVALID_PARAMETER set. Any more 
+	   the function fails with error ERROR_INVALID_PARAMETER set. Any more
 	   and HidD_SetOutputReport() silently truncates the data sent in the report
 	   to caps.OutputReportByteLength. */
 	if (length >= dev->output_report_length) {

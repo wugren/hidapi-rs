@@ -4,7 +4,7 @@ use std::{
     ffi::CStr,
     fmt::{self, Debug},
 };
-
+use std::sync::atomic::AtomicBool;
 use libc::{c_int, size_t, wchar_t};
 
 use crate::{ffi, DeviceInfo, HidDeviceBackendBase, HidError, HidResult, WcharString};
@@ -147,17 +147,20 @@ pub unsafe fn conv_hid_device_info(src: *mut ffi::HidDeviceInfo) -> HidResult<De
 /// Object for accessing HID device
 pub struct HidDevice {
     _hid_device: *mut ffi::HidDevice,
+    is_closed: AtomicBool,
 }
 
 impl HidDevice {
     pub fn from_raw(device: *mut ffi::HidDevice) -> Self {
         Self {
             _hid_device: device,
+            is_closed: AtomicBool::new(false),
         }
     }
 }
 
 unsafe impl Send for HidDevice {}
+unsafe impl Sync for HidDevice {}
 
 impl Debug for HidDevice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -167,7 +170,9 @@ impl Debug for HidDevice {
 
 impl Drop for HidDevice {
     fn drop(&mut self) {
-        unsafe { ffi::hid_close(self._hid_device) }
+        if !self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            unsafe { ffi::hid_close(self._hid_device) }
+        }
     }
 }
 
@@ -188,6 +193,11 @@ impl HidDevice {
 
 impl HidDeviceBackendBase for HidDevice {
     fn check_error(&self) -> HidResult<HidError> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
         Ok(HidError::HidApiError {
             message: unsafe {
                 match wchar_to_string(ffi::hid_error(self._hid_device)) {
@@ -199,6 +209,12 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn write(&self, data: &[u8]) -> HidResult<usize> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
@@ -207,11 +223,23 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn read(&self, buf: &mut [u8]) -> HidResult<usize> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         let res = unsafe { ffi::hid_read(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t) };
         self.check_size(res)
     }
 
     fn read_timeout(&self, buf: &mut [u8], timeout: i32) -> HidResult<usize> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         let res = unsafe {
             ffi::hid_read_timeout(
                 self._hid_device,
@@ -224,6 +252,12 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn send_feature_report(&self, data: &[u8]) -> HidResult<()> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
@@ -245,6 +279,12 @@ impl HidDeviceBackendBase for HidDevice {
     /// Upon return, the first byte will still contain the Report ID, and the
     /// report data will start in `buf[1]`.
     fn get_feature_report(&self, buf: &mut [u8]) -> HidResult<usize> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         let res = unsafe {
             ffi::hid_get_feature_report(self._hid_device, buf.as_mut_ptr(), buf.len() as size_t)
         };
@@ -252,6 +292,12 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn send_output_report(&self, data: &[u8]) -> HidResult<()> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
@@ -270,6 +316,12 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn get_input_report(&self, data: &mut [u8]) -> HidResult<usize> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         if data.is_empty() {
             return Err(HidError::InvalidZeroSizeData);
         }
@@ -280,6 +332,12 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn set_blocking_mode(&self, blocking: bool) -> HidResult<()> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         let res = unsafe {
             ffi::hid_set_nonblocking(self._hid_device, if blocking { 0i32 } else { 1i32 })
         };
@@ -295,7 +353,30 @@ impl HidDeviceBackendBase for HidDevice {
         }
     }
 
+    fn get_device_info(&self) -> HidResult<DeviceInfo> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
+        let raw_device = unsafe { ffi::hid_get_device_info(self._hid_device) };
+        if raw_device.is_null() {
+            match self.check_error() {
+                Ok(err) | Err(err) => return Err(err),
+            }
+        }
+
+        unsafe { conv_hid_device_info(raw_device) }
+    }
+
     fn get_manufacturer_string(&self) -> HidResult<Option<String>> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         let mut buf = [0 as wchar_t; STRING_BUF_LEN];
         let res = unsafe {
             ffi::hid_get_manufacturer_string(
@@ -309,6 +390,12 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn get_product_string(&self) -> HidResult<Option<String>> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         let mut buf = [0 as wchar_t; STRING_BUF_LEN];
         let res = unsafe {
             ffi::hid_get_product_string(
@@ -322,6 +409,12 @@ impl HidDeviceBackendBase for HidDevice {
     }
 
     fn get_serial_number_string(&self) -> HidResult<Option<String>> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         let mut buf = [0 as wchar_t; STRING_BUF_LEN];
         let res = unsafe {
             ffi::hid_get_serial_number_string(
@@ -334,7 +427,26 @@ impl HidDeviceBackendBase for HidDevice {
         unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
     }
 
+    fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
+        let res = unsafe {
+            ffi::hid_get_report_descriptor(self._hid_device, buf.as_mut_ptr(), buf.len())
+        };
+        self.check_size(res)
+    }
+
     fn get_indexed_string(&self, index: i32) -> HidResult<Option<String>> {
+        if self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
+        }
+
         let mut buf = [0 as wchar_t; STRING_BUF_LEN];
         let res = unsafe {
             ffi::hid_get_indexed_string(
@@ -348,21 +460,14 @@ impl HidDeviceBackendBase for HidDevice {
         unsafe { Ok(wchar_to_string(buf[..res].as_ptr()).into()) }
     }
 
-    fn get_device_info(&self) -> HidResult<DeviceInfo> {
-        let raw_device = unsafe { ffi::hid_get_device_info(self._hid_device) };
-        if raw_device.is_null() {
-            match self.check_error() {
-                Ok(err) | Err(err) => return Err(err),
-            }
+    fn close(&self) -> HidResult<()> {
+        if self.is_closed.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            return Err(HidError::HidApiError {
+                message: "HidDevice is closed".to_string(),
+            });
         }
 
-        unsafe { conv_hid_device_info(raw_device) }
-    }
-
-    fn get_report_descriptor(&self, buf: &mut [u8]) -> HidResult<usize> {
-        let res = unsafe {
-            ffi::hid_get_report_descriptor(self._hid_device, buf.as_mut_ptr(), buf.len())
-        };
-        self.check_size(res)
+        unsafe { ffi::hid_close(self._hid_device) };
+        Ok(())
     }
 }
