@@ -210,7 +210,7 @@ static hid_device *new_hid_device()
 	dev->blocking = TRUE;
 	dev->output_report_length = 0;
 	dev->write_buf = NULL;
-	dev->input_report_length = 1024;
+	dev->input_report_length = 256 * 1024;
 	dev->feature_report_length = 0;
 	dev->feature_buf = NULL;
 	dev->last_error_str = NULL;
@@ -1030,16 +1030,16 @@ HID_API_EXPORT hid_device * HID_API_CALL hid_open_path(const char *path)
 //		goto end_of_function;
 //	}
 //
-//	/* Get the Input Report length for the device. */
-//	if (!HidD_GetPreparsedData(device_handle, &pp_data)) {
-//		register_global_winapi_error(L"get preparsed data");
-//		goto end_of_function;
-//	}
-//
-//	if (HidP_GetCaps(pp_data, &caps) != HIDP_STATUS_SUCCESS) {
-//		register_global_error(L"HidP_GetCaps");
-//		goto end_of_function;
-//	}
+	/* Get the Input Report length for the device. */
+	// if (!HidD_GetPreparsedData(device_handle, &pp_data)) {
+	// 	register_global_winapi_error(L"get preparsed data");
+	// 	goto end_of_function;
+	// }
+	//
+	// if (HidP_GetCaps(pp_data, &caps) != HIDP_STATUS_SUCCESS) {
+	// 	register_global_error(L"HidP_GetCaps");
+	// 	goto end_of_function;
+	// }
 
 	dev = new_hid_device();
 
@@ -1051,9 +1051,9 @@ HID_API_EXPORT hid_device * HID_API_CALL hid_open_path(const char *path)
 	dev->device_handle = device_handle;
 	device_handle = INVALID_HANDLE_VALUE;
 
-	dev->output_report_length = caps.OutputReportByteLength;
-	dev->input_report_length = caps.InputReportByteLength;
-	dev->feature_report_length = caps.FeatureReportByteLength;
+	// dev->output_report_length = caps.OutputReportByteLength;
+	// dev->input_report_length = caps.InputReportByteLength;
+	// dev->feature_report_length = caps.FeatureReportByteLength;
 	dev->has_report_id = check_if_report_id_exists(dev->device_handle);
 	dev->read_buf = (char*) malloc(dev->input_report_length);
 	dev->device_info = hid_internal_get_device_info(interface_path, dev->device_handle);
@@ -1202,6 +1202,7 @@ int HID_API_EXPORT HID_API_CALL hid_read_timeout(hid_device *dev, unsigned char 
 	if (overlapped) {
 		/* See if there is any data yet. */
 		res = WaitForSingleObject(ev, milliseconds >= 0 ? (DWORD)milliseconds : INFINITE);
+		printf("read WaitForSingleObject %d\n", res);
 		if (res != WAIT_OBJECT_0) {
 			/* There was no data this time. Return zero bytes available,
 			   but leave the Overlapped I/O running. */
@@ -1414,7 +1415,7 @@ void HID_API_EXPORT HID_API_CALL hid_close(hid_device *dev)
 	if (!dev)
 		return;
 
-	CancelIo(dev->device_handle);
+	CancelIoEx(dev->device_handle, NULL);
 	free_hid_device(dev);
 }
 
