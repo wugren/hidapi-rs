@@ -27,6 +27,7 @@ fn main() {
 
     println!("cargo:rustc-check-cfg=cfg(hidapi)");
     println!("cargo:rustc-check-cfg=cfg(libusb)");
+    println!("cargo:rerun-if-changed=etc/hidapi/");
 
     if target.contains("linux") {
         compile_linux();

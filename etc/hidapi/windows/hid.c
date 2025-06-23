@@ -33,6 +33,7 @@ extern "C" {
 #include "hidapi_winapi.h"
 
 #include <windows.h>
+#include <setupapi.h>
 
 #ifndef _NTDEF_
 typedef LONG NTSTATUS;
@@ -767,48 +768,48 @@ static struct hid_device_info *hid_internal_get_device_info(const wchar_t *path,
 	dev->path = hid_internal_UTF16toUTF8(path);
 	dev->interface_number = -1;
 
-	attrib.Size = sizeof(HIDD_ATTRIBUTES);
-	if (HidD_GetAttributes(handle, &attrib)) {
-		/* VID/PID */
-		dev->vendor_id = attrib.VendorID;
-		dev->product_id = attrib.ProductID;
-
-		/* Release Number */
-		dev->release_number = attrib.VersionNumber;
-	}
+	// attrib.Size = sizeof(HIDD_ATTRIBUTES);
+	// if (HidD_GetAttributes(handle, &attrib)) {
+	// 	/* VID/PID */
+	// 	dev->vendor_id = attrib.VendorID;
+	// 	dev->product_id = attrib.ProductID;
+	//
+	// 	/* Release Number */
+	// 	dev->release_number = attrib.VersionNumber;
+	// }
 
 	/* Get the Usage Page and Usage for this device. */
-	if (HidD_GetPreparsedData(handle, &pp_data)) {
-		if (HidP_GetCaps(pp_data, &caps) == HIDP_STATUS_SUCCESS) {
-			dev->usage_page = caps.UsagePage;
-			dev->usage = caps.Usage;
-		}
-
-		HidD_FreePreparsedData(pp_data);
-	}
+	// if (HidD_GetPreparsedData(handle, &pp_data)) {
+	// 	if (HidP_GetCaps(pp_data, &caps) == HIDP_STATUS_SUCCESS) {
+	// 		dev->usage_page = caps.UsagePage;
+	// 		dev->usage = caps.Usage;
+	// 	}
+	//
+	// 	HidD_FreePreparsedData(pp_data);
+	// }
 
 	/* detect bus type before reading string descriptors */
 	detect_bus_type_result = hid_internal_detect_bus_type(path);
 	dev->bus_type = detect_bus_type_result.bus_type;
 
-	len = dev->bus_type == HID_API_BUS_USB ? MAX_STRING_WCHARS_USB : MAX_STRING_WCHARS;
-	string[len] = L'\0';
-	size = len * sizeof(wchar_t);
-
-	/* Serial Number */
-	string[0] = L'\0';
-	HidD_GetSerialNumberString(handle, string, size);
-	dev->serial_number = _wcsdup(string);
-
-	/* Manufacturer String */
-	string[0] = L'\0';
-	HidD_GetManufacturerString(handle, string, size);
-	dev->manufacturer_string = _wcsdup(string);
-
-	/* Product String */
-	string[0] = L'\0';
-	HidD_GetProductString(handle, string, size);
-	dev->product_string = _wcsdup(string);
+	// len = dev->bus_type == HID_API_BUS_USB ? MAX_STRING_WCHARS_USB : MAX_STRING_WCHARS;
+	// string[len] = L'\0';
+	// size = len * sizeof(wchar_t);
+	//
+	// /* Serial Number */
+	// string[0] = L'\0';
+	// HidD_GetSerialNumberString(handle, string, size);
+	// dev->serial_number = _wcsdup(string);
+	//
+	// /* Manufacturer String */
+	// string[0] = L'\0';
+	// HidD_GetManufacturerString(handle, string, size);
+	// dev->manufacturer_string = _wcsdup(string);
+	//
+	// /* Product String */
+	// string[0] = L'\0';
+	// HidD_GetProductString(handle, string, size);
+	// dev->product_string = _wcsdup(string);
 
 	/* now, the portion that depends on string descriptors */
 	switch (dev->bus_type) {
@@ -845,72 +846,108 @@ struct hid_device_info HID_API_EXPORT * HID_API_CALL hid_enumerate(unsigned shor
 		return NULL;
 	}
 
-	/* Get the list of all device interfaces belonging to the HID class. */
-	/* Retry in case of list was changed between calls to
-	  CM_Get_Device_Interface_List_SizeW and CM_Get_Device_Interface_ListW */
-	do {
-		cr = CM_Get_Device_Interface_List_SizeW(&len, &interface_class_guid, NULL, CM_GET_DEVICE_INTERFACE_LIST_PRESENT);
-		if (cr != CR_SUCCESS) {
-			register_global_error(L"Failed to get size of HID device interface list");
-			break;
-		}
+	SP_DEVINFO_DATA devinfo_data;
+	SP_DEVICE_INTERFACE_DATA device_interface_data;
+	SP_DEVICE_INTERFACE_DETAIL_DATA_W* device_interface_detail_data = NULL;
+	HDEVINFO device_info_set = INVALID_HANDLE_VALUE;
+	/* Initialize the Windows objects. */
+	memset(&devinfo_data, 0x0, sizeof(devinfo_data));
+	devinfo_data.cbSize = sizeof(SP_DEVINFO_DATA);
+	device_interface_data.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
 
-		if (device_interface_list != NULL) {
-			free(device_interface_list);
-		}
+	/* Get information for all the devices belonging to the HID class. */
+	device_info_set = SetupDiGetClassDevsW(&interface_class_guid, NULL, NULL, DIGCF_DEVICEINTERFACE);
+	DWORD DeviceIndex = 0;
 
-		device_interface_list = (wchar_t*)calloc(len, sizeof(wchar_t));
-		if (device_interface_list == NULL) {
-			register_global_error(L"Failed to allocate memory for HID device interface list");
-			return NULL;
-		}
-		cr = CM_Get_Device_Interface_ListW(&interface_class_guid, NULL, device_interface_list, len, CM_GET_DEVICE_INTERFACE_LIST_PRESENT);
-		if (cr != CR_SUCCESS && cr != CR_BUFFER_SMALL) {
-			register_global_error(L"Failed to get HID device interface list");
-		}
-	} while (cr == CR_BUFFER_SMALL);
+	while (SetupDiEnumDeviceInfo(device_info_set, DeviceIndex, &devinfo_data)) {
+		DeviceIndex++;
+		WCHAR friendName[1024] = {0};
+		DWORD dwSize;
+		SetupDiGetDeviceRegistryPropertyW(device_info_set, &devinfo_data, SPDRP_FRIENDLYNAME, NULL, (BYTE*)friendName, sizeof(friendName), &dwSize);
 
-	if (cr != CR_SUCCESS) {
-		goto end_of_function;
+		WCHAR instanceId[1024] = {0};
+		DWORD size = 0;
+		SetupDiGetDeviceInstanceIdW(device_info_set, &devinfo_data, instanceId, sizeof(instanceId), &size);
+
+		// WCHAR devDesc[1024] = {0};
+		// DWORD pnSize;
+		// SetupDiGetDeviceRegistryPropertyW(device_info_set, &devinfo_data, SPDRP_DEVICEDESC, NULL, (BYTE*)devDesc, sizeof(devDesc), &pnSize);
+
+		DWORD interface_index = 0;
+		while (SetupDiEnumDeviceInterfaces(
+									 device_info_set,
+									 &devinfo_data,
+									 &interface_class_guid,
+									 interface_index,
+									 &device_interface_data)) {
+			interface_index++;
+			DWORD required_size = 0;
+			SetupDiGetDeviceInterfaceDetailW(device_info_set,
+				&device_interface_data,
+				NULL,
+				0,
+				&required_size,
+				NULL);
+
+			/* Allocate a long enough structure for device_interface_detail_data. */
+			device_interface_detail_data = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)malloc(required_size);
+			device_interface_detail_data->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_W);
+
+			/* Get the detailed data for this device. The detail data gives us
+			   the device path for this device, which is then passed into
+			   CreateFile() to get a handle to the device. */
+			int res = SetupDiGetDeviceInterfaceDetailW(device_info_set,
+				&device_interface_data,
+				device_interface_detail_data,
+				required_size,
+				NULL,
+				NULL);
+
+			if (!res) {
+				goto cont;
+			}
+
+			HANDLE handle = open_device(device_interface_detail_data->DevicePath, FALSE);
+
+			/* Check validity of write_handle. */
+			if (handle == INVALID_HANDLE_VALUE) {
+				/* Unable to open the device. */
+				//register_error(dev, "CreateFile");
+				goto cont;
+			}
+
+			/* Check the VID/PID to see if we should add this
+			   device to the enumeration list. */
+			if (vendor_id == 0x0 &&
+				product_id == 0x0) {
+
+				/* VID/PID match. Create the record. */
+				struct hid_device_info *tmp = hid_internal_get_device_info(device_interface_detail_data->DevicePath, handle);
+				if (tmp == NULL) {
+					goto cont_close;
+				}
+
+				tmp->product_string = _wcsdup(friendName);
+
+				if (cur_dev) {
+					cur_dev->next = tmp;
+				}
+				else {
+					root = tmp;
+				}
+				cur_dev = tmp;
+				}
+			cont_close:
+				CloseHandle(handle);
+			cont:
+				/* We no longer need the detail data. It can be freed */
+				free(device_interface_detail_data);
+
+			interface_index++;
+		}
 	}
-
-	/* Iterate over each device interface in the HID class, looking for the right one. */
-	for (wchar_t* device_interface = device_interface_list; *device_interface; device_interface += wcslen(device_interface) + 1) {
-		HANDLE device_handle = INVALID_HANDLE_VALUE;
-		HIDD_ATTRIBUTES attrib;
-
-		/* Open read-only handle to the device */
-		device_handle = open_device(device_interface, FALSE);
-
-		/* Check validity of device_handle. */
-		if (device_handle == INVALID_HANDLE_VALUE) {
-			/* Unable to open the device. */
-			continue;
-		}
-
-		/* Check the VID/PID to see if we should add this
-		   device to the enumeration list. */
-		if (vendor_id == 0x0 &&
-		    product_id == 0x0) {
-
-			/* VID/PID match. Create the record. */
-			struct hid_device_info *tmp = hid_internal_get_device_info(device_interface, device_handle);
-
-			if (tmp == NULL) {
-				goto cont_close;
-			}
-
-			if (cur_dev) {
-				cur_dev->next = tmp;
-			}
-			else {
-				root = tmp;
-			}
-			cur_dev = tmp;
-		}
-
-cont_close:
-		CloseHandle(device_handle);
+	if (device_info_set) {
+		SetupDiDestroyDeviceInfoList(device_info_set);
 	}
 
 	if (root == NULL) {
@@ -921,10 +958,87 @@ cont_close:
 		}
 	}
 
-end_of_function:
-	free(device_interface_list);
-
 	return root;
+// 	/* Get the list of all device interfaces belonging to the HID class. */
+// 	/* Retry in case of list was changed between calls to
+// 	  CM_Get_Device_Interface_List_SizeW and CM_Get_Device_Interface_ListW */
+// 	do {
+// 		cr = CM_Get_Device_Interface_List_SizeW(&len, &interface_class_guid, NULL, CM_GET_DEVICE_INTERFACE_LIST_PRESENT);
+// 		if (cr != CR_SUCCESS) {
+// 			register_global_error(L"Failed to get size of HID device interface list");
+// 			break;
+// 		}
+//
+// 		if (device_interface_list != NULL) {
+// 			free(device_interface_list);
+// 		}
+//
+// 		device_interface_list = (wchar_t*)calloc(len, sizeof(wchar_t));
+// 		if (device_interface_list == NULL) {
+// 			register_global_error(L"Failed to allocate memory for HID device interface list");
+// 			return NULL;
+// 		}
+// 		cr = CM_Get_Device_Interface_ListW(&interface_class_guid, NULL, device_interface_list, len, CM_GET_DEVICE_INTERFACE_LIST_PRESENT);
+// 		if (cr != CR_SUCCESS && cr != CR_BUFFER_SMALL) {
+// 			register_global_error(L"Failed to get HID device interface list");
+// 		}
+// 	} while (cr == CR_BUFFER_SMALL);
+//
+// 	if (cr != CR_SUCCESS) {
+// 		goto end_of_function;
+// 	}
+//
+// 	/* Iterate over each device interface in the HID class, looking for the right one. */
+// 	for (wchar_t* device_interface = device_interface_list; *device_interface; device_interface += wcslen(device_interface) + 1) {
+// 		HANDLE device_handle = INVALID_HANDLE_VALUE;
+// 		HIDD_ATTRIBUTES attrib;
+//
+// 		/* Open read-only handle to the device */
+// 		device_handle = open_device(device_interface, FALSE);
+//
+// 		/* Check validity of device_handle. */
+// 		if (device_handle == INVALID_HANDLE_VALUE) {
+// 			/* Unable to open the device. */
+// 			continue;
+// 		}
+//
+// 		/* Check the VID/PID to see if we should add this
+// 		   device to the enumeration list. */
+// 		if (vendor_id == 0x0 &&
+// 		    product_id == 0x0) {
+//
+// 			/* VID/PID match. Create the record. */
+// 			struct hid_device_info *tmp = hid_internal_get_device_info(device_interface, device_handle);
+//
+// 			if (tmp == NULL) {
+// 				goto cont_close;
+// 			}
+//
+// 			if (cur_dev) {
+// 				cur_dev->next = tmp;
+// 			}
+// 			else {
+// 				root = tmp;
+// 			}
+// 			cur_dev = tmp;
+// 		}
+//
+// cont_close:
+// 		CloseHandle(device_handle);
+// 	}
+//
+// 	if (root == NULL) {
+// 		if (vendor_id == 0 && product_id == 0) {
+// 			register_global_error(L"No HID devices found in the system.");
+// 		} else {
+// 			register_global_error(L"No HID devices with requested VID/PID found in the system.");
+// 		}
+// 	}
+//
+// end_of_function:
+// 	free(device_interface_list);
+//
+// 	return root;
 }
 
 void  HID_API_EXPORT HID_API_CALL hid_free_enumeration(struct hid_device_info *devs)
