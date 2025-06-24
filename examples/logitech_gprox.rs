@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .min(100);
 
     let api = HidApi::new()?;
-    let dev = api.open(0x046d, 0x0aaa)?;
+    let dev = HidApi::open(0x046d, 0x0aaa)?;
 
     println!("Setting sidechannel volume to {}", vol);
 

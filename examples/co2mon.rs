@@ -90,7 +90,7 @@ fn invalid_data_err(msg: impl Into<String>) -> HidError {
 
 fn main() -> Result<(), HidError> {
     let api = HidApi::new()?;
-    let dev = api.open(DEV_VID, DEV_PID)?;
+    let dev = HidApi::open(DEV_VID, DEV_PID)?;
     dev.send_feature_report(&[0; PACKET_SIZE])?;
 
     if let Some(manufacturer) = dev.get_manufacturer_string()? {

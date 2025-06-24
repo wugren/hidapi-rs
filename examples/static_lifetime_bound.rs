@@ -30,7 +30,7 @@ fn test_lt() -> Rc<HidDevice> {
         .expect("There is not a single hid device available");
 
     let dev = Rc::new(
-        api.open(dev_info.vendor_id(), dev_info.product_id())
+        HidApi::open(dev_info.vendor_id(), dev_info.product_id())
             .expect("Can not open device"),
     );
 

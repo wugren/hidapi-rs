@@ -27,7 +27,7 @@ fn main() {
             device_info.product_id()
         );
 
-        let device = device_info.open_device(&hidapi)?;
+        let device = device_info.open_device()?;
 
         let mut buf = vec![0; 64];
 

@@ -268,14 +268,14 @@ impl HidApi {
     /// When multiple devices with the same vid and pid are available, then the
     /// first one found in the internal device list will be used. There are however
     /// no guarantees, which device this will be.
-    pub fn open(&self, vid: u16, pid: u16) -> HidResult<HidDevice> {
+    pub fn open(vid: u16, pid: u16) -> HidResult<HidDevice> {
         let dev = HidApiBackend::open(vid, pid)?;
         Ok(HidDevice::from_backend(Box::new(dev)))
     }
 
     /// Open a HID device using a Vendor ID (VID), Product ID (PID) and
     /// a serial number.
-    pub fn open_serial(&self, vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
+    pub fn open_serial(vid: u16, pid: u16, sn: &str) -> HidResult<HidDevice> {
         let dev = HidApiBackend::open_serial(vid, pid, sn)?;
         Ok(HidDevice::from_backend(Box::new(dev)))
     }
@@ -283,7 +283,7 @@ impl HidApi {
     /// The path name be determined by inspecting the device list available with [`HidApi::device_list`].
     ///
     /// Alternatively a platform-specific path name can be used (eg: /dev/hidraw0 on Linux).
-    pub fn open_path(&self, device_path: &CStr) -> HidResult<HidDevice> {
+    pub fn open_path(device_path: &CStr) -> HidResult<HidDevice> {
         let dev = HidApiBackend::open_path(device_path)?;
         Ok(HidDevice::from_backend(Box::new(dev)))
     }
@@ -461,11 +461,11 @@ impl DeviceInfo {
     /// fail with [HidError::OpenHidDeviceWithDeviceInfoError](enum.HidError.html#variant.OpenHidDeviceWithDeviceInfoError).
     ///
     /// Note, that opening a device could still be done using [HidApi::open()](struct.HidApi.html#method.open) directly.
-    pub fn open_device(&self, hidapi: &HidApi) -> HidResult<HidDevice> {
+    pub fn open_device(&self) -> HidResult<HidDevice> {
         if !self.path.as_bytes().is_empty() {
-            hidapi.open_path(self.path.as_c_str())
+            HidApi::open_path(self.path.as_c_str())
         } else if let Some(sn) = self.serial_number() {
-            hidapi.open_serial(self.vendor_id, self.product_id, sn)
+            HidApi::open_serial(self.vendor_id, self.product_id, sn)
         } else {
             Err(HidError::OpenHidDeviceWithDeviceInfoError {
                 device_info: Box::new(self.clone()),

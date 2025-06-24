@@ -16,7 +16,7 @@ fn main() {
                 );
                 let mut descriptor = vec![0u8; 2048];
                 match device
-                    .open_device(&api)
+                    .open_device()
                     .and_then(|dev| dev.get_report_descriptor(&mut descriptor))
                 {
                     Ok(length) => println!("    {:?}", &mut descriptor[..length]),
