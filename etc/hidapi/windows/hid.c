@@ -1316,7 +1316,6 @@ int HID_API_EXPORT HID_API_CALL hid_read_timeout(hid_device *dev, unsigned char 
 	if (overlapped) {
 		/* See if there is any data yet. */
 		res = WaitForSingleObject(ev, milliseconds >= 0 ? (DWORD)milliseconds : INFINITE);
-		printf("read WaitForSingleObject %d\n", res);
 		if (res != WAIT_OBJECT_0) {
 			/* There was no data this time. Return zero bytes available,
 			   but leave the Overlapped I/O running. */
