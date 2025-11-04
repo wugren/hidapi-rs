@@ -533,16 +533,18 @@ static void hid_internal_get_usb_info(struct hid_device_info* dev, DEVINST dev_n
 	}
 
 	/* Try to get USB device manufacturer string if not provided by HidD_GetManufacturerString. */
-	if (wcslen(dev->manufacturer_string) == 0) {
+	if (dev->manufacturer_string == NULL || wcslen(dev->manufacturer_string) == 0) {
 		wchar_t* manufacturer_string = hid_internal_get_devnode_property(dev_node, &DEVPKEY_Device_Manufacturer, DEVPROP_TYPE_STRING);
 		if (manufacturer_string) {
-			free(dev->manufacturer_string);
+			if (dev->manufacturer_string != NULL) {
+				free(dev->manufacturer_string);
+			}
 			dev->manufacturer_string = manufacturer_string;
 		}
 	}
 
 	/* Try to get USB device serial number if not provided by HidD_GetSerialNumberString. */
-	if (wcslen(dev->serial_number) == 0) {
+	if (dev->serial_number == NULL || wcslen(dev->serial_number) == 0) {
 		DEVINST usb_dev_node = dev_node;
 		if (dev->interface_number != -1) {
 			/* Get devnode parent to reach out composite parent USB device.
@@ -569,7 +571,9 @@ static void hid_internal_get_usb_info(struct hid_device_info* dev, DEVINST dev_n
 				break;
 
 			if (*ptr == L'\\') {
-				free(dev->serial_number);
+				if (dev->serial_number != NULL) {
+					free(dev->serial_number);
+				}
 				dev->serial_number = _wcsdup(ptr + 1);
 				break;
 			}
@@ -591,25 +595,29 @@ end:
 */
 static void hid_internal_get_ble_info(struct hid_device_info* dev, DEVINST dev_node)
 {
-	if (wcslen(dev->manufacturer_string) == 0) {
+	if (dev->manufacturer_string == NULL || wcslen(dev->manufacturer_string) == 0) {
 		/* Manufacturer Name String (UUID: 0x2A29) */
 		wchar_t* manufacturer_string = hid_internal_get_devnode_property(dev_node, (const DEVPROPKEY*)&PKEY_DeviceInterface_Bluetooth_Manufacturer, DEVPROP_TYPE_STRING);
 		if (manufacturer_string) {
-			free(dev->manufacturer_string);
+			if (dev->manufacturer_string != NULL) {
+				free(dev->manufacturer_string);
+			}
 			dev->manufacturer_string = manufacturer_string;
 		}
 	}
 
-	if (wcslen(dev->serial_number) == 0) {
+	if (dev->serial_number == NULL || wcslen(dev->serial_number) == 0) {
 		/* Serial Number String (UUID: 0x2A25) */
 		wchar_t* serial_number = hid_internal_get_devnode_property(dev_node, (const DEVPROPKEY*)&PKEY_DeviceInterface_Bluetooth_DeviceAddress, DEVPROP_TYPE_STRING);
 		if (serial_number) {
-			free(dev->serial_number);
+			if (dev->serial_number != NULL) {
+				free(dev->serial_number);
+			}
 			dev->serial_number = serial_number;
 		}
 	}
 
-	if (wcslen(dev->product_string) == 0) {
+	if (dev->product_string == NULL || wcslen(dev->product_string) == 0) {
 		/* Model Number String (UUID: 0x2A24) */
 		wchar_t* product_string = hid_internal_get_devnode_property(dev_node, (const DEVPROPKEY*)&PKEY_DeviceInterface_Bluetooth_ModelNumber, DEVPROP_TYPE_STRING);
 		if (!product_string) {
@@ -622,7 +630,9 @@ static void hid_internal_get_ble_info(struct hid_device_info* dev, DEVINST dev_n
 		}
 
 		if (product_string) {
-			free(dev->product_string);
+			if (dev->product_string != NULL) {
+				free(dev->product_string);
+			}
 			dev->product_string = product_string;
 		}
 	}
@@ -762,6 +772,7 @@ static struct hid_device_info *hid_internal_get_device_info(const wchar_t *path,
 	if (dev == NULL) {
 		return NULL;
 	}
+	ZeroMemory(dev, sizeof(struct hid_device_info));
 
 	/* Fill out the record */
 	dev->next = NULL;
@@ -1047,10 +1058,18 @@ void  HID_API_EXPORT HID_API_CALL hid_free_enumeration(struct hid_device_info *d
 	struct hid_device_info *d = devs;
 	while (d) {
 		struct hid_device_info *next = d->next;
-		free(d->path);
-		free(d->serial_number);
-		free(d->manufacturer_string);
-		free(d->product_string);
+		if (d->path != NULL) {
+			free(d->path);
+		}
+		if (d->serial_number != NULL) {
+			free(d->serial_number);
+		}
+		if (d->manufacturer_string != NULL) {
+			free(d->manufacturer_string);
+		}
+		if (d->product_string != NULL) {
+			free(d->product_string);
+		}
 		free(d);
 		d = next;
 	}
@@ -1327,6 +1346,12 @@ int HID_API_EXPORT HID_API_CALL hid_read_timeout(hid_device *dev, unsigned char 
 		   already waited on our event above, and since it's auto-reset, it will have
 		   been reset back to unsignalled by now. */
 		res = GetOverlappedResult(dev->device_handle, &dev->ol, &bytes_read, FALSE/*don't wait now - already did on the prev step*/);
+		if (!res) {
+			DWORD err = GetLastError();
+			if (err == ERROR_OPERATION_ABORTED) {
+				return -1;
+			}
+		}
 	}
 	/* Set pending back to false, even if GetOverlappedResult() returned error. */
 	dev->read_pending = FALSE;
