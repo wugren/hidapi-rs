@@ -74,6 +74,7 @@ extern "C" {
         length: size_t,
     ) -> c_int;
     pub fn hid_close(device: *mut HidDevice);
+    pub fn hid_free(device: *mut HidDevice);
     pub fn hid_get_manufacturer_string(
         device: *mut HidDevice,
         string: *mut wchar_t,

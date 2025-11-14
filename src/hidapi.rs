@@ -173,6 +173,7 @@ impl Drop for HidDevice {
         if !self.is_closed.load(std::sync::atomic::Ordering::Relaxed) {
             unsafe { ffi::hid_close(self._hid_device) }
         }
+        unsafe { ffi::hid_free(self._hid_device)};
     }
 }
 

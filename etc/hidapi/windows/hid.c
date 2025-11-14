@@ -201,11 +201,13 @@ struct hid_device_ {
 
 static hid_device *new_hid_device()
 {
-	hid_device *dev = (hid_device*) calloc(1, sizeof(hid_device));
+	int s = sizeof(hid_device);
+	hid_device *dev = (hid_device*) malloc(s);
 
 	if (dev == NULL) {
 		return NULL;
 	}
+	memset(dev, 0, s);
 
 	dev->device_handle = INVALID_HANDLE_VALUE;
 	dev->blocking = TRUE;
@@ -223,7 +225,7 @@ static hid_device *new_hid_device()
 	memset(&dev->write_ol, 0, sizeof(dev->write_ol));
 	dev->write_ol.hEvent = CreateEvent(NULL, FALSE, FALSE /*initial state f=nonsignaled*/, NULL);
 	dev->device_info = NULL;
-	dev->write_timeout_ms = 1000;
+	dev->write_timeout_ms = 2000;
 
 	return dev;
 }
@@ -233,11 +235,22 @@ static void free_hid_device(hid_device *dev)
 	CloseHandle(dev->ol.hEvent);
 	CloseHandle(dev->write_ol.hEvent);
 	CloseHandle(dev->device_handle);
-	free(dev->last_error_str);
-	dev->last_error_str = NULL;
-	free(dev->write_buf);
-	free(dev->feature_buf);
-	free(dev->read_buf);
+	if (dev->last_error_str != NULL) {
+		free(dev->last_error_str);
+		dev->last_error_str = NULL;
+	}
+	if (dev->write_buf != NULL) {
+		free(dev->write_buf);
+		dev->write_buf = NULL;
+	}
+	if (dev->feature_buf != NULL) {
+		free(dev->feature_buf);
+		dev->feature_buf = NULL;
+	}
+	if (dev->read_buf != NULL) {
+		free(dev->read_buf);
+		dev->read_buf = NULL;
+	}
 	hid_free_enumeration(dev->device_info);
 	free(dev);
 }
@@ -1270,8 +1283,12 @@ int HID_API_EXPORT HID_API_CALL hid_write(hid_device *dev, const unsigned char *
 		   hid_write() synchronous. */
 		res = WaitForSingleObject(dev->write_ol.hEvent, dev->write_timeout_ms);
 		if (res != WAIT_OBJECT_0) {
-			/* There was a Timeout. */
-			register_winapi_error(dev, L"hid_write/WaitForSingleObject");
+			if (res == WAIT_TIMEOUT) {
+				/* There was a Timeout. */
+				register_winapi_error(dev, L"hid_write/WaitForSingleObject timeout");
+			} else {
+				register_winapi_error(dev, L"hid_write/WaitForSingleObject failed");
+			}
 			goto end_of_function;
 		}
 
@@ -1281,6 +1298,10 @@ int HID_API_EXPORT HID_API_CALL hid_write(hid_device *dev, const unsigned char *
 			function_result = bytes_written;
 		}
 		else {
+			DWORD err = GetLastError();
+			if (err == ERROR_OPERATION_ABORTED) {
+				return -1;
+			}
 			/* The Write operation failed. */
 			register_winapi_error(dev, L"hid_write/GetOverlappedResult");
 			goto end_of_function;
@@ -1554,6 +1575,13 @@ void HID_API_EXPORT HID_API_CALL hid_close(hid_device *dev)
 		return;
 
 	CancelIoEx(dev->device_handle, NULL);
+}
+
+void HID_API_EXPORT HID_API_CALL hid_free(hid_device *dev)
+{
+	if (!dev)
+		return;
+
 	free_hid_device(dev);
 }
 
