@@ -1191,7 +1191,7 @@ HID_API_EXPORT hid_device * HID_API_CALL hid_open_path(const char *path)
 	// dev->feature_report_length = caps.FeatureReportByteLength;
 	dev->has_report_id = check_if_report_id_exists(dev->device_handle);
 	dev->read_buf = (char*) malloc(dev->input_report_length);
-	dev->device_info = hid_internal_get_device_info(interface_path, dev->device_handle);
+	dev->device_info = hid_internal_get_device_info(interface_path);
 
 end_of_function:
 	free(interface_path);
