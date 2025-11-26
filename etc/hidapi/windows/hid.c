@@ -768,7 +768,7 @@ static wchar_t *hid_internal_UTF8toUTF16(const char *src)
 	return dst;
 }
 
-static struct hid_device_info *hid_internal_get_device_info(const wchar_t *path, HANDLE handle)
+static struct hid_device_info *hid_internal_get_device_info(const wchar_t *path)
 {
 	struct hid_device_info *dev = NULL; /* return object */
 	HIDD_ATTRIBUTES attrib;
@@ -931,24 +931,15 @@ struct hid_device_info HID_API_EXPORT * HID_API_CALL hid_enumerate(unsigned shor
 				goto cont;
 			}
 
-			HANDLE handle = open_device(device_interface_detail_data->DevicePath, FALSE);
-
-			/* Check validity of write_handle. */
-			if (handle == INVALID_HANDLE_VALUE) {
-				/* Unable to open the device. */
-				//register_error(dev, "CreateFile");
-				goto cont;
-			}
-
 			/* Check the VID/PID to see if we should add this
 			   device to the enumeration list. */
 			if (vendor_id == 0x0 &&
 				product_id == 0x0) {
 
 				/* VID/PID match. Create the record. */
-				struct hid_device_info *tmp = hid_internal_get_device_info(device_interface_detail_data->DevicePath, handle);
+				struct hid_device_info *tmp = hid_internal_get_device_info(device_interface_detail_data->DevicePath);
 				if (tmp == NULL) {
-					goto cont_close;
+					goto cont;
 				}
 
 				tmp->product_string = _wcsdup(friendName);
@@ -961,8 +952,6 @@ struct hid_device_info HID_API_EXPORT * HID_API_CALL hid_enumerate(unsigned shor
 				}
 				cur_dev = tmp;
 				}
-			cont_close:
-				CloseHandle(handle);
 			cont:
 				/* We no longer need the detail data. It can be freed */
 				free(device_interface_detail_data);
