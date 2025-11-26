@@ -930,7 +930,15 @@ struct hid_device_info HID_API_EXPORT * HID_API_CALL hid_enumerate(unsigned shor
 			if (!res) {
 				goto cont;
 			}
+			HANDLE handle = open_device(device_interface_detail_data->DevicePath, FALSE);
 
+			/* Check validity of write_handle. */
+			if (handle == INVALID_HANDLE_VALUE) {
+				/* Unable to open the device. */
+				//register_error(dev, "CreateFile");
+				goto cont;
+			}
+			CloseHandle(handle);
 			/* Check the VID/PID to see if we should add this
 			   device to the enumeration list. */
 			if (vendor_id == 0x0 &&
