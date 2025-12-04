@@ -225,7 +225,7 @@ static hid_device *new_hid_device()
 	memset(&dev->write_ol, 0, sizeof(dev->write_ol));
 	dev->write_ol.hEvent = CreateEvent(NULL, FALSE, FALSE /*initial state f=nonsignaled*/, NULL);
 	dev->device_info = NULL;
-	dev->write_timeout_ms = 2000;
+	dev->write_timeout_ms = 5000;
 
 	return dev;
 }
