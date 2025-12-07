@@ -225,7 +225,7 @@ static hid_device *new_hid_device()
 	memset(&dev->write_ol, 0, sizeof(dev->write_ol));
 	dev->write_ol.hEvent = CreateEvent(NULL, FALSE, FALSE /*initial state f=nonsignaled*/, NULL);
 	dev->device_info = NULL;
-	dev->write_timeout_ms = 60000;
+	dev->write_timeout_ms = 1000;
 
 	return dev;
 }
@@ -367,7 +367,7 @@ static HANDLE open_device(const wchar_t *path, BOOL open_rw)
 		share_mode,
 		NULL,
 		OPEN_EXISTING,
-		FILE_FLAG_OVERLAPPED,/*FILE_ATTRIBUTE_NORMAL,*/
+		FILE_FLAG_OVERLAPPED | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_NO_BUFFERING,/*FILE_ATTRIBUTE_NORMAL,*/
 		0);
 
 	return handle;
