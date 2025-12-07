@@ -367,7 +367,7 @@ static HANDLE open_device(const wchar_t *path, BOOL open_rw)
 		share_mode,
 		NULL,
 		OPEN_EXISTING,
-		FILE_FLAG_OVERLAPPED | FILE_FLAG_WRITE_THROUGH | FILE_FLAG_NO_BUFFERING,/*FILE_ATTRIBUTE_NORMAL,*/
+		FILE_FLAG_OVERLAPPED,/*FILE_ATTRIBUTE_NORMAL,*/
 		0);
 
 	return handle;
