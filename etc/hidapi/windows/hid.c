@@ -232,9 +232,6 @@ static hid_device *new_hid_device()
 
 static void free_hid_device(hid_device *dev)
 {
-	CloseHandle(dev->ol.hEvent);
-	CloseHandle(dev->write_ol.hEvent);
-	CloseHandle(dev->device_handle);
 	if (dev->last_error_str != NULL) {
 		free(dev->last_error_str);
 		dev->last_error_str = NULL;
@@ -1572,6 +1569,9 @@ void HID_API_EXPORT HID_API_CALL hid_close(hid_device *dev)
 		return;
 
 	CancelIoEx(dev->device_handle, NULL);
+	CloseHandle(dev->ol.hEvent);
+	CloseHandle(dev->write_ol.hEvent);
+	CloseHandle(dev->device_handle);
 }
 
 void HID_API_EXPORT HID_API_CALL hid_free(hid_device *dev)
